@@ -7,6 +7,9 @@ import { fetchSnapshot } from '../src/lib/qldClient.js';
 import { buildGrantDocuments } from '../src/lib/transform.js';
 import { fetchBusinessGrants } from '../src/lib/businessClient.js';
 import { normalizeBusinessGrants } from '../src/lib/businessGrants.js';
+import { fetchCuratedGrants } from '../src/lib/curatedGrants.js';
+import { fetchBusinessQldPages, urlKey } from '../src/lib/businessQldDiscovery.js';
+import { fetchSmartyGrants } from '../src/lib/smartyGrants.js';
 import { argValue, loadScriptEnv } from './env.js';
 
 const env = loadScriptEnv();
@@ -16,9 +19,15 @@ const snapshot = await fetchSnapshot({
 });
 const qld = buildGrantDocuments(snapshot);
 const business = normalizeBusinessGrants((await fetchBusinessGrants()).results);
-const documents = [...qld.documents, ...business.documents];
-const fetched = qld.fetched + business.fetched;
-const duplicatesRemoved = qld.duplicatesRemoved + business.duplicatesRemoved;
+const curated = await fetchCuratedGrants();
+const known = new Set([...qld.documents, ...business.documents, ...curated.documents].map((d) => d.url).filter((u): u is string => !!u).map(urlKey));
+const discovered = await fetchBusinessQldPages(known);
+const smarty = await fetchSmartyGrants();
+const extra = [curated, discovered, smarty];
+const documents = [...qld.documents, ...business.documents, ...extra.flatMap((e) => e.documents)];
+const fetched = qld.fetched + business.fetched + extra.reduce((n, e) => n + e.fetched, 0);
+const duplicatesRemoved = qld.duplicatesRemoved + business.duplicatesRemoved
+  + extra.reduce((n, e) => n + e.duplicatesRemoved, 0);
 
 const count = (values: (string | null)[]) =>
   Object.fromEntries(
@@ -31,6 +40,9 @@ console.log({
   duplicatesRemoved,
   qldDocuments: qld.documents.length,
   businessDocuments: business.documents.length,
+  curatedDocuments: curated.documents.length,
+  businessQldDocuments: discovered.documents.length,
+  smartyGrantsDocuments: smarty.documents.length,
   availableInQueensland: documents.filter((d) => d.jurisdictions.includes('Queensland')).length,
   source: count(documents.map((d) => d.source)),
   documents: documents.length,

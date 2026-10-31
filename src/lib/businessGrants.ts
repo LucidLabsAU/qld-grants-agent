@@ -7,7 +7,7 @@ const text = (value: unknown) => typeof value === 'string' && value.trim() ? val
 const values = (value: unknown): string[] =>
   [...new Set((Array.isArray(value) ? value : value ? [value] : []).filter((v): v is string => typeof v === 'string' && !!v.trim()).map((v) => v.trim()))].sort();
 
-function plain(value: unknown): string | null {
+export function plain(value: unknown): string | null {
   const html = text(value);
   if (!html) return null;
   const result = html

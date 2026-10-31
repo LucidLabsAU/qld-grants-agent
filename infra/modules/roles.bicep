@@ -65,6 +65,7 @@ var searchAssignments = concat(
 var foundryAssignments = concat(
   [
     { principalId: searchPrincipalId, type: 'ServicePrincipal', role: roleIds.cognitiveServicesOpenAiUser } // embeddings + KB model
+    { principalId: functionPrincipalId, type: 'ServicePrincipal', role: roleIds.cognitiveServicesOpenAiUser } // curated-page field extraction
   ],
   hasUser
     ? [

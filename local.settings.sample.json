@@ -9,6 +9,8 @@
     "GRANTS_CONTAINER": "grants",
     "SEARCH_ENDPOINT": "https://<search-service>.search.windows.net",
     "SEARCH_INDEXER_NAME": "grants-indexer",
+    "FOUNDRY_OPENAI_ENDPOINT": "https://<foundry-account>.openai.azure.com",
+    "CHAT_DEPLOYMENT": "gpt-5.4-mini",
     "SYNC_SCHEDULE": "0 0 16 * * 6"
   }
 }

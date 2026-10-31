@@ -136,6 +136,8 @@ module functionApp 'modules/function.bicep' = {
       GRANTS_CONTAINER: grantsContainer
       SEARCH_ENDPOINT: search.outputs.endpoint
       SEARCH_INDEXER_NAME: indexerName
+      FOUNDRY_OPENAI_ENDPOINT: foundry.outputs.openAiEndpoint
+      CHAT_DEPLOYMENT: foundry.outputs.chatDeployment
       SYNC_SCHEDULE: syncSchedule
     }
   }
