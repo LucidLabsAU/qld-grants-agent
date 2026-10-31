@@ -62,7 +62,12 @@ async function runLimited<T>(items: T[], limit: number, fn: (item: T) => Promise
 export async function syncGrantsToBlob(
   container: ContainerClient,
   docs: GrantDocument[],
-  { now = new Date(), retentionDays = 30, concurrency = 16 } = {},
+  { now = new Date(), retentionDays = 30, concurrency = 16, preserveIds = [] }: {
+    now?: Date;
+    retentionDays?: number;
+    concurrency?: number;
+    preserveIds?: string[];
+  } = {},
 ): Promise<BlobSyncStats> {
   await container.createIfNotExists();
   const existing = await listExisting(container);
@@ -89,6 +94,7 @@ export async function syncGrantsToBlob(
   });
 
   const liveNames = new Set(docs.map((d) => blobName(d.id)));
+  for (const id of preserveIds) liveNames.add(blobName(id));
   const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
   const stale = [...existing.values()].filter((b) => !liveNames.has(b.name));
 

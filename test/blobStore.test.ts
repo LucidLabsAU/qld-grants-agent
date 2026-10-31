@@ -29,6 +29,24 @@ function fakeContainer() {
 const doc = (id: string, contentHash: string) => ({ id, contentHash, title: `Grant ${id}` }) as GrantDocument;
 
 describe('syncGrantsToBlob', () => {
+  it('preserves failed-page records without blocking deletion of genuinely removed grants', async () => {
+    const { blobs, container } = fakeContainer();
+    await syncGrantsToBlob(container, [doc('failed', 'a'), doc('removed', 'b'), doc('deleted-failed', 'c')], {
+      now: new Date('2026-01-01T00:00:00Z'),
+    });
+    await syncGrantsToBlob(container, [doc('failed', 'a'), doc('removed', 'b')], {
+      now: new Date('2026-01-02T00:00:00Z'),
+    });
+    const stats = await syncGrantsToBlob(container, [], {
+      now: new Date('2026-03-01T00:00:00Z'),
+      preserveIds: ['failed', 'deleted-failed'],
+    });
+    expect(stats).toMatchObject({ softDeleted: 1, purged: 0 });
+    expect(blobs.get('failed.json')!.metadata.IsDeleted).toBe('false');
+    expect(blobs.get('removed.json')!.metadata.IsDeleted).toBe('true');
+    expect(blobs.has('deleted-failed.json')).toBe(true);
+  });
+
   it('writes only new/changed grants, soft-deletes removed ones and purges after retention', async () => {
     const { blobs, container } = fakeContainer();
     const t0 = new Date('2026-01-01T00:00:00Z');

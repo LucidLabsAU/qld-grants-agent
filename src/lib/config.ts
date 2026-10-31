@@ -4,6 +4,8 @@ export interface AppConfig {
   storageAccountUrl: string;
   container: string;
   searchEndpoint: string | undefined;
+  openAiEndpoint: string | undefined;
+  chatDeployment: string | undefined;
   indexerName: string;
   softDeleteRetentionDays: number;
 }
@@ -23,6 +25,8 @@ export function loadConfig(): AppConfig {
     storageAccountUrl: required('GRANTS_STORAGE_ACCOUNT_URL'),
     container: process.env.GRANTS_CONTAINER ?? 'grants',
     searchEndpoint: process.env.SEARCH_ENDPOINT,
+    openAiEndpoint: process.env.FOUNDRY_OPENAI_ENDPOINT,
+    chatDeployment: process.env.CHAT_DEPLOYMENT,
     indexerName: process.env.SEARCH_INDEXER_NAME ?? 'grants-indexer',
     softDeleteRetentionDays: Number(process.env.SOFT_DELETE_RETENTION_DAYS ?? 30),
   };

@@ -7,6 +7,10 @@ import { syncGrantsToBlob, type BlobSyncStats } from './blobStore.js';
 import { buildGrantDocuments } from './transform.js';
 import { fetchBusinessGrants } from './businessClient.js';
 import { normalizeBusinessGrants } from './businessGrants.js';
+import { fetchCuratedGrants } from './curatedGrants.js';
+import { fetchBusinessQldPages, urlKey } from './businessQldDiscovery.js';
+import { fetchSmartyGrants } from './smartyGrants.js';
+import { extractGrantFields, FoundryChatClient } from './extractGrantFields.js';
 
 export interface SyncSummary {
   fetched: number;
@@ -29,13 +33,28 @@ export async function runSync(
   const snapshot = await fetchSnapshot({ baseUrl: config.qldApiBaseUrl, apiKey: config.qldApiKey });
   const qld = buildGrantDocuments(snapshot, now);
   const business = normalizeBusinessGrants((await fetchBusinessGrants()).results, now);
-  const documents = [...qld.documents, ...business.documents];
-  const fetched = qld.fetched + business.fetched;
-  const duplicatesRemoved = qld.duplicatesRemoved + business.duplicatesRemoved;
-  log(`Fetched ${qld.fetched} QLD and ${business.fetched} business.gov.au programs; ${duplicatesRemoved} duplicates collapsed → ${documents.length} documents.`);
+  const chat = config.openAiEndpoint && config.chatDeployment
+    ? new FoundryChatClient(config.openAiEndpoint, config.chatDeployment, credential)
+    : undefined;
+  const extract = chat && ((title: string, text: string) => extractGrantFields(chat, title, text));
+  const pageOptions = { extract, log, now };
+  const curated = await fetchCuratedGrants(undefined, { ...pageOptions, concurrency: 4 });
+  const known = new Set([...qld.documents, ...business.documents, ...curated.documents].map((d) => d.url).filter((u): u is string => !!u).map(urlKey));
+  const discovered = await fetchBusinessQldPages(known, pageOptions);
+  const smarty = await fetchSmartyGrants({ log, now });
+  const extra = [curated, discovered, smarty];
+  const documents = [...qld.documents, ...business.documents, ...extra.flatMap((e) => e.documents)];
+  const fetched = qld.fetched + business.fetched + extra.reduce((n, e) => n + e.fetched, 0);
+  const duplicatesRemoved = qld.duplicatesRemoved + business.duplicatesRemoved
+    + extra.reduce((n, e) => n + e.duplicatesRemoved, 0);
+  log(`Fetched ${qld.fetched} QLD, ${business.fetched} business.gov.au, ${curated.fetched} curated, ${discovered.fetched} Business Queensland and ${smarty.fetched} SmartyGrants programs; ${duplicatesRemoved} duplicates collapsed → ${documents.length} documents.`);
 
   const container = new BlobServiceClient(config.storageAccountUrl, credential).getContainerClient(config.container);
-  const blob = await syncGrantsToBlob(container, documents, { now, retentionDays: config.softDeleteRetentionDays });
+  const blob = await syncGrantsToBlob(container, documents, {
+    now,
+    retentionDays: config.softDeleteRetentionDays,
+    preserveIds: discovered.failedIds,
+  });
   log(`Blob sync: ${JSON.stringify(blob)}`);
 
   const changed = blob.created + blob.updated + blob.softDeleted;
