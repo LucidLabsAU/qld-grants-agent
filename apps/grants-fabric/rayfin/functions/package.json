@@ -1,0 +1,22 @@
+{
+  "name": "rayfin-functions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/function_app.js",
+  "scripts": {
+    "build": "tsc --build",
+    "build:watch": "tsc --build --watch",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\""
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "1.0.28",
+    "@microsoft/fabric-user-data-functions": "1.36.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0"
+  },
+  "overrides": {
+    "zod": "4.6.7"
+  }
+}

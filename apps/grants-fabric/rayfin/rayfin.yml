@@ -1,0 +1,37 @@
+id: grants-fabric
+name: grants-fabric
+version: 1.0.0
+services:
+  auth:
+    enabled: true
+    fabric:
+      enabled: true
+      externalEntraExchange: true
+    password:
+      enabled: false
+    allowedRedirectUris:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+      - https://deft-wheat-ac5929f368-australiaeast.webapp.fabricapps.net
+  data:
+    enabled: true
+    dialect: mssql
+  staticHosting:
+    enabled: true
+    folder: dist
+    buildCommand: npm run build:fabric
+    indexDocument: index.html
+    assetAccess: protected
+  functions:
+    enabled: true
+    path: rayfin/functions
+    buildCommand: npm run build
+    auth:
+      type: application
+  storage:
+    enabled: false
+secrets:
+  - name: AI_ENDPOINT
+    description: Azure OpenAI root endpoint used by the Copilot SDK chat function
+  - name: AI_DEPLOYMENT
+    description: Chat model deployment; Fabric supplies an Entra token, not an API key

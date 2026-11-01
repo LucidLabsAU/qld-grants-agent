@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "2.0",
+  "functions": [
+    {
+      "functionName": "askGrants",
+      "delegateParameters": [
+        {
+          "name": "question",
+          "type": "string",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "selectedId",
+          "type": "string",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        },
+        {
+          "name": "openOnly",
+          "type": "boolean",
+          "optional": false,
+          "hasDefault": false,
+          "position": 2,
+          "isFabricParameter": false
+        },
+        {
+          "name": "context",
+          "type": "RayfinContext<GrantsAppSchema, AudienceType.AzureAI>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 3,
+          "isFabricParameter": true,
+          "fabricParameterType": "RayfinContext<GrantsAppSchema, AudienceType.AzureAI>"
+        }
+      ],
+      "contextAudiences": [
+        "AzureAI"
+      ]
+    }
+  ]
+}

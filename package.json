@@ -19,6 +19,9 @@
     "preview": "tsx scripts/preview-grants.ts",
     "setup:search": "tsx scripts/setup-search.ts",
     "setup:agent": "tsx scripts/setup-agent.ts",
+    "setup:fabric": "tsx scripts/setup-fabric.ts",
+    "build:fabric": "npm --prefix apps/grants-fabric run build",
+    "test:fabric": "npm --prefix apps/grants-fabric test",
     "chat": "tsx scripts/chat.ts",
     "query": "tsx scripts/query.ts"
   },

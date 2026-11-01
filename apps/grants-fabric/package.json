@@ -1,0 +1,68 @@
+{
+  "name": "grants-fabric",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Fabric-hosted Queensland grants catalogue, human review trail, and grounded chat powered by Rayfin.",
+  "type": "module",
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0"
+  },
+  "template": {
+    "name": "grants-fabric",
+    "displayName": "Grants Workbench",
+    "description": "Private grant catalogue, immutable reviews, and grounded Copilot SDK chat hosted by Microsoft Fabric."
+  },
+  "scripts": {
+    "prebuild": "rayfin env --framework vite",
+    "dev": "rayfin dev",
+    "dev:frontend": "vite",
+    "build": "tsc -b && vite build",
+    "build:fabric": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "smoke": "node --import tsx scripts/smoke.mjs",
+    "deploy:fabric": "node scripts/deploy-fabric.mjs",
+    "rayfin:db": "rayfin up db apply"
+  },
+  "dependencies": {
+    "@microsoft/rayfin-auth-provider-fabric": "^1.36.2",
+    "@microsoft/rayfin-client": "^1.36.2",
+    "@microsoft/rayfin-core": "^1.36.2",
+    "@microsoft/rayfin-local-dev": "^1.36.2",
+    "@tailwindcss/vite": "^4.1.11",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@microsoft/rayfin-cli": "^1.36.2",
+    "@testing-library/jest-dom": "^6.4.6",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react-swc": "^4.2.2",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^16.0.0",
+    "jsdom": "^24.1.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "tsx": "^4.23.0",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^7.3.2",
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "@azure/msal-node": "7.1.2",
+    "glob": "14.0.2",
+    "minimatch": "11.0.1",
+    "zod": "4.6.7"
+  },
+  "allowScripts": {
+    "keytar@7.9.0": true
+  }
+}

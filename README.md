@@ -57,6 +57,7 @@ The broader vision is the same grounded agent wherever someone needs help: embed
 | **Grants data and search** | Weekly feed/page/portal ingestion, deduplication, automatic revision history, change tracking, facets, keyword/vector/hybrid search and semantic ranking. | [Querying](#querying) |
 | **Grounded grants agent** | A YAML-defined Foundry prompt agent connected to a FoundryIQ knowledge base through MCP, with Application Insights monitoring. | [Grants agent](#grants-agent) |
 | **Experience prototype** | A separate Edge/Chrome extension and local authentication bridge demonstrating the journey on the existing public site. It is not deployed by the infrastructure template. | [Demo setup](demo/grants-finder-extension/README.md) |
+| **Fabric workbench** | A separate Rayfin app with private grant storage, immutable human reviews, and Copilot SDK chat with persisted citations. | [Fabric app](apps/grants-fabric/README.md) |
 | **Deployment as code** | Bicep infrastructure, JSON search definitions and scripts to publish the search objects and agent. | [Deploy](#deploy) |
 
 The prototype stays separate from the backend: it calls the published agent through the Foundry Responses API and does not change the ingestion, index or agent deployment. You can use the backend entirely without the extension.
@@ -202,7 +203,9 @@ QLD fact/dimension responses and the Business Queensland sitemap are validated b
 
 ```
 infra/                  Bicep: main.bicep (+ .bicepparam) and small modules
-  modules/              search · foundry · function · storage · monitoring · roles
+  fabric.bicep          subscription entry point: Fabric resource group + optional chat model
+  modules/              search · foundry · function · storage · monitoring · roles · fabric-ai
+apps/grants-fabric/      Rayfin high-code app: Fabric SQL, reviews, and Copilot SDK chat
 src/
   functions/syncGrants.ts   weekly timer + POST /api/sync
   lib/                      qldClient · businessClient · businessGrants · normalize · dates · dedupe · transform · blobStore · searchClient · sync
@@ -218,6 +221,10 @@ demo/                   throwaway demos, self-contained and not deployed
 ---
 
 ## Deploy
+
+`appBackend` in `infra/main.bicep` selects **azure** (default, unchanged backend), **fabric** (Rayfin app without the Azure ingestion/search stack), or **hybrid** (both). The Fabric app is published separately through `npx rayfin up`; ARM does not create Fabric workspace items. Use incremental deployments: changing the mode does not delete previously deployed resources.
+
+### Azure backend (default)
 
 **Prerequisites:** Azure CLI (with Bicep ≥ 0.47), Node 22, Azure Functions Core Tools v4, a QLD Grants API key, and quota for `text-embedding-3-small` and `gpt-5.4-mini` (GlobalStandard) in the target region.
 
@@ -258,6 +265,32 @@ npm run chat
 ```
 
 > Bicep may warn `BCP081 … does not have types available` for the newest API versions (Bicep's type definitions lag behind ARM). ARM still validates these at deploy time. `az deployment group validate` passes with this template.
+
+### Fabric backend
+
+`infra/fabric.bicepparam` uses the subscription-scoped `fabric.bicep`: **Bicep creates the resource group**, a dedicated Azure OpenAI account, its model deployment, and an inference role for the Fabric AppBackend owner. It does not provision another Fabric capacity, Azure Function, Storage account, Search service, or Foundry project.
+
+```bash
+export FABRIC_WORKSPACE_ID='<existing-workspace-guid>'
+export FABRIC_TENANT_ID='<tenant-guid>'
+export FABRIC_RESOURCE_GROUP='qld-grants-fabric-rg'
+export FABRIC_AI_LOCATION='australiaeast'
+export FABRIC_AI_PRINCIPAL_ID="$(az ad signed-in-user show --query id -o tsv)"
+# This must be the actual Fabric AppBackend owner's Entra object ID.
+az deployment sub create --location australiaeast --name grants-fabric \
+  --parameters infra/fabric.bicepparam
+
+npm ci
+npm --prefix apps/grants-fabric ci
+npm --prefix apps/grants-fabric/rayfin/functions ci
+npm run setup:fabric -- -g qld-grants-fabric-rg
+```
+
+Provisioning requires subscription resource-write and role-assignment permissions; activate eligible PIM roles when needed. The default `fabricAiModel` is `gpt-4.1-mini`, version `2025-04-14`, regional `Standard`, capacity `30` (30,000 tokens/minute). Model/version/SKU/capacity are configurable in Bicep; check regional availability and subscription quota before changing them. Inference is metered, in addition to the existing Fabric capacity costs.
+
+The dedicated model has a public endpoint so Fabric can reach it, but API keys are disabled and inference requires Entra authentication. Existing model firewalls are untouched. To reuse a reachable model instead, set `FABRIC_DEPLOY_AI=false`, `FABRIC_AI_ENDPOINT` and `FABRIC_AI_DEPLOYMENT`. In hybrid mode, an omitted existing endpoint/deployment uses the original Foundry chat model, unless `deployFabricAi` is enabled.
+
+Fabric mode uses manually imported normalized JSON and a caller-private catalogue, not the Azure weekly sync or FoundryIQ search pipeline. See the [app README](apps/grants-fabric/README.md) for imports, SDK packaging, validation, and prototype limits.
 
 ### Configuration
 

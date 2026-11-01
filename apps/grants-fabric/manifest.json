@@ -1,0 +1,19 @@
+{
+  "templateId": "grants-fabric",
+  "icon": "todo-app",
+  "services": {
+    "auth": true,
+    "data": true,
+    "functions": true,
+    "storage": false,
+    "staticHosting": true
+  },
+  "hasDabSchema": true,
+  "tokens": [
+    "__RAYFIN_API_URL__",
+    "__RAYFIN_PK__",
+    "__FABRIC_ITEM_ID__",
+    "__FABRIC_WORKSPACE_ID__",
+    "__FABRIC_PORTAL_URL__"
+  ]
+}
