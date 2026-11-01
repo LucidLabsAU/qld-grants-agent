@@ -15,7 +15,7 @@ import { argValue, loadScriptEnv } from './env.js';
 const env = loadScriptEnv();
 const snapshot = await fetchSnapshot({
   baseUrl: env.QLD_API_BASE_URL ?? 'https://api.jus-checklist.services.qld.gov.au/v1/api/legacy/resources/grants',
-  apiKey: env.QLD_API_KEY,
+  ...(env.QLD_API_KEY && { apiKey: env.QLD_API_KEY }),
 });
 const qld = buildGrantDocuments(snapshot);
 const business = normalizeBusinessGrants((await fetchBusinessGrants()).results);

@@ -54,7 +54,7 @@ The broader vision is the same grounded agent wherever someone needs help: embed
 
 | Layer | What is implemented | Start here |
 |---|---|---|
-| **Grants data and search** | Weekly two-source ingestion, deduplication, change tracking, facets, keyword/vector/hybrid search and semantic ranking. | [Querying](#querying) |
+| **Grants data and search** | Weekly feed/page/portal ingestion, deduplication, automatic revision history, change tracking, facets, keyword/vector/hybrid search and semantic ranking. | [Querying](#querying) |
 | **Grounded grants agent** | A YAML-defined Foundry prompt agent connected to a FoundryIQ knowledge base through MCP, with Application Insights monitoring. | [Grants agent](#grants-agent) |
 | **Experience prototype** | A separate Edge/Chrome extension and local authentication bridge demonstrating the journey on the existing public site. It is not deployed by the infrastructure template. | [Demo setup](demo/grants-finder-extension/README.md) |
 | **Deployment as code** | Bicep infrastructure, JSON search definitions and scripts to publish the search objects and agent. | [Deploy](#deploy) |
@@ -65,7 +65,7 @@ The prototype stays separate from the backend: it calls the published agent thro
 
 ## Architecture
 
-A weekly TypeScript Azure Function pulls the [QLD Grants Finder](https://www.grants.services.qld.gov.au/) API **and** the public business.gov.au finder (Coveo). It normalizes and deduplicates each feed, then stages one JSON document per program in Blob Storage. An AI Search **pull indexer** embeds the title and description with a Microsoft Foundry `text-embedding-3-small` deployment. The results go into a faceted `grants` index, which a FoundryIQ **knowledge base** (`gpt-5.4-mini`) is layered over. The **Queensland Grants Finder agent** ([YAML definition](agents/grants-agent.yaml)) calls that knowledge base through MCP.
+A weekly TypeScript Azure Function pulls the [QLD Grants Finder](https://www.grants.services.qld.gov.au/) API, the public business.gov.au finder (Coveo), curated and discovered official program pages, and public council SmartyGrants rounds. It normalizes and deduplicates each feed, records automatic grant revisions, then stages one current JSON document per program in Blob Storage. An AI Search **pull indexer** embeds the title and description with a Microsoft Foundry `text-embedding-3-small` deployment. The results go into a faceted `grants` index, which a FoundryIQ **knowledge base** (`gpt-5.4-mini`) is layered over. The **Queensland Grants Finder agent** ([YAML definition](agents/grants-agent.yaml)) calls that knowledge base through MCP.
 
 ```mermaid
 flowchart LR
@@ -74,6 +74,7 @@ flowchart LR
         D[application_type · category ·<br/>client_group_1 · funding_type ·<br/>business_activities<br/><i>dimensions</i>]
     end
     BGA[business.gov.au<br/>public Coveo finder]
+    PAGES[Official Queensland pages<br/>+ council SmartyGrants portals]
 
     subgraph FN["Azure Function (Flex Consumption, Node 22)"]
         T[⏰ weekly timer<br/>+ POST /api/sync]
@@ -82,6 +83,7 @@ flowchart LR
     end
 
     B[(Blob Storage<br/>grants/&lt;id&gt;.json)]
+    HIST[(Blob Storage<br/>grants-history/&lt;id&gt;/&lt;revision&gt;.json)]
 
     subgraph SRCH["Azure AI Search · Serverless"]
         I[Blob indexer<br/>on demand + daily safety net]
@@ -96,7 +98,8 @@ flowchart LR
         AG[🤖 qld-grants-agent<br/>prompt agent]
     end
 
-    S & D & BGA --> T --> N --> X -->|write only if changed<br/>soft-delete if removed| B
+    S & D & BGA & PAGES --> T --> N --> X -->|write only if changed<br/>soft-delete if removed| B
+    X -->|archive before mutation| HIST
     X -. run indexer .-> I
     B --> I --> K --> IDX
     K -. embed .-> E
@@ -115,7 +118,7 @@ flowchart LR
 | **Azure AI Search** `serverless` (preview), `2026-09-01-preview` | Semantic ranker and agentic retrieval (`knowledgeRetrieval`) enabled, system-assigned MI, Entra ID + key auth |
 | **Microsoft Foundry** (AIServices) + project, `2026-09-15-preview` | `text-embedding-3-small` (1536d) and `gpt-5.4-mini` GlobalStandard deployments; project connections to Search (`grants-search`), the knowledge base MCP endpoint (`grants-kb-mcp`, `RemoteTool`, project managed identity) and Application Insights (`appinsights`, agent tracing) |
 | **Function App** Flex Consumption, `2026-08-01` | Node 22, system MI, identity-based `AzureWebJobsStorage` |
-| **Storage** `2026-09-01` | Shared keys disabled. Containers: `grants` and `app-package` |
+| **Storage** `2026-09-01` | Shared keys disabled. Containers: `grants`, `grants-history` and `app-package` |
 | Log Analytics + App Insights | Function telemetry and Foundry agent traces |
 | RBAC `2026-07-01-preview` | Keyless everywhere (see [Security](#security)) |
 
@@ -156,15 +159,16 @@ Lookups use the dimension tables, so new dimension values are picked up automati
 | `eligibility`, `howToApply`, `successNotification` | string | ✓ | | | | |
 | `status` | string | | ✓ | ✓ | | `Open` / `Closed` |
 | `isOpen` | bool | | ✓ | ✓ | | Open **and** closing date not passed *at sync time* |
-| `openingDate`, `closingDate` | DateTimeOffset | | ✓ | ✓ | ✓ | parsed from 6 mixed formats, QLD time (+10:00) |
+| `openingDate`, `closingDate` | DateTimeOffset | | ✓ | ✓ | ✓ | QLD date-only deadlines stored at 23:59:59.999 (+10:00); explicit portal times retained |
 | `amount` | double | | ✓ | ✓ | ✓ | |
 | `issuingAgency`, `deliveredBy`, `assistanceType`, `financialYearBudget` | string | ✓ | ✓ | ✓ | | |
 | `applicantTypes`, `categories`, `clientGroups`, `fundingTypes`, `businessActivities` | string[] | ✓ | ✓ | ✓ | | joined from the dimensions |
 | `url` | string | | | | | |
 | `tagIds`, `sourceIds`, `contentHash`, `lastChangedAt` | – | | ✓ | | | lineage and change tracking |
+| `revision` | Int64 | | ✓ | | ✓ | automatic current grant revision; separate history includes removal events |
 | `titleVector`, `descriptionVector` | 1536 × single | ✓ | | | | HNSW (cosine), Foundry vectorizer for query-time embedding |
 
-S = searchable, F = filterable, Fa = facetable, So = sortable. The semantic configuration `grants-semantic` uses `title` as the title field, then `summary`, `eligibility` and `successNotification` as content, and the audience and category collections as keywords. `en.microsoft` analyzers are used throughout.
+S = searchable, F = filterable, Fa = facetable, So = sortable. The semantic configuration `grants-semantic` uses `title` as the title field, then `summary`, `eligibility` and `successNotification` as content, and the audience and category collections as keywords. `en.microsoft` analyzers are used throughout. The description embedding falls back to the title for null/empty summaries; this does not invent or overwrite a missing summary.
 
 ### Deduplication and updates
 
@@ -172,7 +176,25 @@ S = searchable, F = filterable, Fa = facetable, So = sortable. The semantic conf
 2. **Identical QLD content → one document.** Each normalized QLD record gets a SHA-256 fingerprint that excludes its id. Records with the same fingerprint are merged into the lowest id, and every original id goes into `sourceIds`. Business.gov.au listings are deduplicated by their stable Sitecore id, keeping the richer record when duplicate variants occur. Separate publishers' listings are not merged by title, since rounds and eligibility can differ.
 3. **Only write what changed.** Each blob stores a `contenthash` in its metadata. The sync lists the container once, rewrites only the grants whose hash changed, and leaves everything else alone. The indexer's change detection therefore re-embeds only changed grants, which keeps embedding cost close to zero on quiet weeks.
 4. **Removals.** A grant that disappears (or is merged into another id) gets blob metadata `IsDeleted=true`, and the indexer's soft-delete policy removes it from the index. Soft-deleted blobs are purged after 30 days (`SOFT_DELETE_RETENTION_DAYS`).
-5. The Function triggers the indexer only when something changed. The indexer also has its own daily schedule as a safety net.
+5. Every successful sync queues the indexer, including a retry after a previous indexer request failed. The indexer still processes only changed blobs; an already-running indexer is accepted. Its daily schedule remains a safety net.
+
+### Automatic grant versioning
+
+Versioning runs inside the normal timer/manual sync; no separate job or manual version bump is needed. Grant IDs remain stable. The current document exposes `revision`, and the separate `grants-history` container stores append-only records at `<id>/000001.json`, `<id>/000002.json`, etc. Each record contains `revision`, `event`, `recordedAt`, `deleted` and the grant snapshot.
+
+New grants start at revision 1. Indexed content changes, removals and restorations create new revisions; quiet syncs do not. An existing unversioned grant is automatically archived as a `baseline` before its next update or removal, or during its next unchanged sync. Baseline migration adds the current revision field once without changing `lastChangedAt`. Previously overwritten content cannot be reconstructed.
+
+History is written **before** changing the current blob. An archive failure prevents that mutation; a failed current write can be retried without overwriting or duplicating its matching last revision. History records describe observed snapshots/events and may exist before a failed staging write is retried. Soft-deleted current blobs may be purged after retention, but their history remains, and a later restoration continues the revision sequence. History is not an indexer data source, so removed or superseded revisions cannot enter normal retrieval.
+
+Writes use Blob's create-only condition (`If-None-Match: *`). This is application-enforced immutability, not a locked Azure WORM policy: a principal with storage write/delete permissions can still alter history outside this application. History has no automatic purge policy and will consume storage as revisions accumulate.
+
+`GRANTS_HISTORY_CONTAINER` defaults to `grants-history` and must differ from `GRANTS_CONTAINER`. Bicep provisions it and exports the setting; the Function can also create it using its existing storage role. To enable this on an existing deployment, publish the updated Function and reapply the search definitions (`npm run setup:search -- --reset --run`) to add `revision` and rebuild vectors with the updated skillset. This one-time reset re-embeds existing documents. The next sync migrates the existing grants automatically.
+
+### Reliability and validation
+
+Timer and manual syncs share a renewable 60-second container lease, preventing overlapping Function instances from publishing competing snapshots. A crashed host's lease expires automatically. Ingestion has an eight-minute cancellation budget to leave room within the ten-minute Function timeout; HTTP clients also have bounded request timeouts. Failed batches stop scheduling new work and await active tasks before returning.
+
+QLD fact/dimension responses and the Business Queensland sitemap are validated before staging; empty or error-shaped QLD snapshots are refused. Discovered-page failures preserve their existing records. These checks detect malformed responses, not every semantically incomplete publisher snapshot. Model quote checks and the judge reduce extraction errors but cannot guarantee correctness; official program pages remain authoritative.
 
 ---
 
@@ -245,9 +267,10 @@ npm run chat
 | `QLD_API_BASE_URL` | `https://api.jus-checklist.services.qld.gov.au/v1/api/legacy/resources/grants` | |
 | `SYNC_SCHEDULE` | `0 0 16 * * 6` | NCRONTAB in **UTC**: Sat 16:00 UTC = Sun 02:00 AEST |
 | `GRANTS_STORAGE_ACCOUNT_URL` / `GRANTS_CONTAINER` | deployment output / `grants` | staging area |
+| `GRANTS_HISTORY_CONTAINER` | `grants-history` | append-only grant revisions, independent of current-blob retention |
 | `SEARCH_ENDPOINT` / `SEARCH_INDEXER_NAME` | deployment output / `grants-indexer` | indexer run after sync |
 | `FOUNDRY_OPENAI_ENDPOINT` / `CHAT_DEPLOYMENT` | deployment outputs | field extraction for curated pages (optional; Function identity needs *Cognitive Services OpenAI User*, assigned in `roles.bicep`) |
-| `SOFT_DELETE_RETENTION_DAYS` | `30` | purge soft-deleted blobs after N days |
+| `SOFT_DELETE_RETENTION_DAYS` | `30` | non-negative number of days before purging soft-deleted current blobs; does not purge history |
 
 The indexer's own schedule (`search/indexer.json`) is `P1D`, the longest interval AI Search allows. Blob change detection means runs with no changed blobs process nothing, so the effective cadence is the weekly Function, which triggers the indexer as soon as it writes changes.
 
@@ -258,10 +281,13 @@ The indexer's own schedule (`search/indexer.json`) is `P1D`, the longest interva
 ```powershell
 npm ci
 npm test                        # unit tests (dates, normalization, dedupe, blob sync)
+npm run test:demo                # isolated Node tests for cards, streaming, worker state and bridge
 $env:QLD_API_KEY = '<key>'
 npm run preview                 # live API -> normalized/deduped docs, no Azure needed
 npm run preview -- --out grants.preview.json
 ```
+
+TypeScript enables strict typing, unchecked-index detection, exact optional properties, unused-code checks, fallthrough checks and explicit return checking. GitHub Actions runs typechecking, backend tests, build, demo tests and dependency auditing on Node 22 and 24. Demo tests require neither Azure credentials nor Playwright/browser dependencies.
 
 To run the Function locally, copy `local.settings.sample.json` to `local.settings.json`, start Azurite, then run `npm start`. Blob and Search access use your `az login` identity through `DefaultAzureCredential`.
 

@@ -379,6 +379,7 @@
   }
 
   function card(g, i) {
+    const detailsPath = g.source === 'Queensland Grants Finder' && /^\d+$/.test(g.id) ? `/service-details/${g.id}` : null;
     const closing = g.closingDate ? new Date(g.closingDate) : null;
     const when = closing
       ? `${closing < new Date() ? 'Closed' : 'Closes'} ${fmtDate(g.closingDate)}`
@@ -394,16 +395,16 @@
       h('h4', {}, g.title),
       g.summary ? h('p', { class: 'card-sum' }, g.summary) : null,
       h('div', { class: 'meta' },
-        g.amount ? h('span', { html: icon('coins', 13) }, aud.format(g.amount)) : null,
+        g.amount !== null ? h('span', { html: icon('coins', 13) }, aud.format(g.amount)) : null,
         when ? h('span', { html: icon('calendar', 13) }, when) : null,
         g.agency ? h('span', { html: icon('landmark', 13) }, g.agency) : null,
       ),
       h('div', { class: 'card-actions' },
-        g.source === 'business.gov.au'
-          ? h('a', { class: 'btn primary', href: g.url, target: '_blank', rel: 'noopener noreferrer',
-            html: `View on business.gov.au ${icon('external', 13)}` })
-          : h('button', { class: 'btn primary', onclick: () => navigate(`/service-details/${g.id}`), html: `View details ${icon('arrowRight', 14)}` }),
-        g.url && g.source !== 'business.gov.au'
+        detailsPath
+          ? h('button', { class: 'btn primary', onclick: () => navigate(detailsPath), html: `View details ${icon('arrowRight', 14)}` })
+          : g.url ? h('a', { class: 'btn primary', href: g.url, target: '_blank', rel: 'noopener noreferrer',
+            html: `${g.source === 'business.gov.au' ? 'View on business.gov.au' : 'Official site'} ${icon('external', 13)}` }) : null,
+        g.url && detailsPath
           ? h('a', { class: 'btn', href: g.url, target: '_blank', rel: 'noopener noreferrer', html: `Official site ${icon('external', 13)}` }) : null,
         h('button', { class: 'btn ghost', title: 'Ask about this grant', onclick: () => ask(`Tell me more about "${g.title}" - who is eligible and how do I apply?`, { withContext: false }), html: `${icon('message', 13)} Ask` }),
       ),
@@ -549,6 +550,9 @@
           const { host, root: r } = shadowHost('gc-pick');
           r.append(h('span', { class: 'pick-badge', title: `Recommended for: ${pick.question}`, html: icon('sparkles', 12) }, 'AI pick'));
           item.querySelector('.mb-2')?.append(host);
+        } else if (!pick) {
+          item.classList.remove('gc-picked');
+          item.querySelector('gc-pick')?.remove();
         }
       }
       const list = document.querySelector('.results-section');

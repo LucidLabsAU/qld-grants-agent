@@ -6,7 +6,7 @@ import { parse as parseYaml } from 'yaml';
 const ENV_FILE = resolve(process.cwd(), '.env');
 
 /** Defaults for names that are not deployment outputs. Environment variables override them. */
-const DEFAULTS: Record<string, string> = {
+const DEFAULTS = {
   SEARCH_INDEX_NAME: 'grants',
   SEARCH_DATASOURCE_NAME: 'grants-blob',
   SEARCH_SKILLSET_NAME: 'grants-skillset',
@@ -14,11 +14,33 @@ const DEFAULTS: Record<string, string> = {
   KNOWLEDGE_SOURCE_NAME: 'grants-ks',
   KNOWLEDGE_BASE_NAME: 'grants-kb',
   GRANTS_CONTAINER: 'grants',
+  GRANTS_HISTORY_CONTAINER: 'grants-history',
 };
+type ScriptEnv = Record<string, string> & typeof DEFAULTS;
 
 export function argValue(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const value = process.argv[i + 1];
+  if (!value || value.startsWith('-')) throw new Error(`Missing value for ${flag}`);
+  return value;
+}
+
+/** Removes switches and their values before interpreting positional input. */
+export function positionalArgs(flagsWithValue: readonly string[] = []): string[] {
+  const valueFlags = new Set(['-g', '--resource-group', '--deployment', ...flagsWithValue]);
+  const positional: string[] = [];
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (valueFlags.has(arg)) {
+      argValue(arg);
+      i++;
+    } else if (!arg.startsWith('-')) {
+      positional.push(arg);
+    }
+  }
+  return positional;
 }
 
 /** Pulls the Bicep deployment outputs (UPPER_SNAKE_CASE) and persists them to `.env`. */
@@ -41,7 +63,7 @@ function writeEnvFromDeployment(resourceGroup: string, deploymentName: string): 
  * to refresh `.env` from the Bicep deployment outputs first. `AZURE_RESOURCE_GROUP` in the shell does the same
  * when `.env` does not exist yet (handy because npm on PowerShell swallows `-- -g`).
  */
-export function loadScriptEnv(): Record<string, string> {
+export function loadScriptEnv(): ScriptEnv {
   const rg =
     argValue('-g') ??
     argValue('--resource-group') ??
@@ -49,7 +71,7 @@ export function loadScriptEnv(): Record<string, string> {
   if (rg) writeEnvFromDeployment(rg, argValue('--deployment') ?? 'main');
   if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
-  const env: Record<string, string> = { ...DEFAULTS };
+  const env: ScriptEnv = { ...DEFAULTS };
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   return env;
 }

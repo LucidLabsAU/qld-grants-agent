@@ -7,6 +7,7 @@
     "semanticConfigurationName": "grants-semantic",
     "sourceDataFields": [
       { "name": "id" },
+      { "name": "revision" },
       { "name": "source" },
       { "name": "jurisdictions" },
       { "name": "title" },

@@ -2,6 +2,9 @@
 // Needs the bridge running (npm run bridge). Usage: npm run capture [-- --no-video] [-- --headed]
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
@@ -191,11 +194,15 @@ async function main() {
     speed(5);
     await caption('⏩', label, 'Fast-forwarded · the agent is searching live Queensland Government grant data');
     const until = Date.now() + 240000;
+    let completed = false;
     for (let retried = false; Date.now() < until; await sleep(1000)) {
       const s = await agentState();
       const last = s.messages?.at(-1);
       if (s.busy || (s.messages?.length ?? 0) < before + 2 || last?.role !== 'assistant') continue;
-      if (last.status === 'done') break;
+      if (last.status === 'done') {
+        completed = true;
+        break;
+      }
       if (last.status === 'error' && !retried) {
         console.warn('  agent error, retrying:', last.error);
         retried = true;
@@ -205,6 +212,7 @@ async function main() {
       }
       if (last.status === 'error') throw new Error(`Agent error: ${last.error}`);
     }
+    if (!completed) throw new Error(`Timed out waiting for the agent: ${label}`);
     speed(1);
     await sleep(1500);
   };
@@ -256,7 +264,7 @@ async function main() {
   await shot('05-top-match-cards');
 
   console.log('3. Detail page');
-  const firstCard = page.locator(`${panelRoot} .card`).first();
+  const firstCard = page.locator(`${panelRoot} .card:has(button.btn.primary)`).first();
   const firstTitle = (await firstCard.locator('h4').textContent())?.trim();
   await click(firstCard.locator('.btn.primary'));
   await page.waitForURL(/service-details/, { timeout: 15000 });
@@ -371,14 +379,23 @@ async function encodeList(list) {
   const proc = spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'] });
   let stderr = '';
   proc.stderr.on('data', (d) => (stderr = (stderr + d).slice(-4000)));
-  const exited = new Promise((r) => proc.on('close', r));
-  let cached = [null, null];
-  for (const file of plan) {
-    if (cached[0] !== file) cached = [file, fs.readFileSync(file)];
-    if (!proc.stdin.write(cached[1])) await new Promise((r) => proc.stdin.once('drain', r));
+  function* buffers() {
+    let cached = [null, null];
+    for (const file of plan) {
+      if (cached[0] !== file) cached = [file, fs.readFileSync(file)];
+      yield cached[1];
+    }
   }
-  proc.stdin.end();
-  if ((await exited) !== 0) return console.error(stderr);
+  try {
+    const [, [code]] = await Promise.all([pipeline(Readable.from(buffers()), proc.stdin), once(proc, 'close')]);
+    if (code !== 0) throw new Error(`Video encoding failed (${code}): ${stderr}`);
+  } finally {
+    if (proc.pid && proc.exitCode === null && !proc.killed) {
+      const closed = once(proc, 'close');
+      proc.kill();
+      await closed;
+    }
+  }
   fs.rmSync(FRAMES, { recursive: true, force: true });
   console.log('🎬', out);
 }

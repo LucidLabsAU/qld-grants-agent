@@ -19,7 +19,7 @@ export const urlKey = (url: string) => {
 /** Funding-related Business Queensland URLs from the sitemap that no other source already links to. */
 export function selectFundingUrls(sitemapXml: string, known: Set<string>): string[] {
   return [...sitemapXml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
-    .map((m) => m[1])
+    .map((m) => m[1]!)
     .filter((url) => {
       try {
         const { hostname, pathname, protocol } = new URL(url);
@@ -36,7 +36,11 @@ export function selectFundingUrls(sitemapXml: string, known: Set<string>): strin
 
 /** Finds funding pages on Business Queensland that the Grants Finder and business.gov.au do not link to. */
 export async function fetchBusinessQldPages(known: Set<string>, opts: PageOptions = {}) {
-  const urls = selectFundingUrls(await getHtml(SITEMAP, opts.fetcher), known);
+  const xml = await getHtml(SITEMAP, opts.fetcher, opts.signal);
+  if (!/<urlset\b/i.test(xml) || !/<loc>/.test(xml)) {
+    throw new Error('Business Queensland sitemap markup not recognised; refusing an unsafe snapshot');
+  }
+  const urls = [...new Set(selectFundingUrls(xml, known))];
   const sources: CuratedSource[] = urls.map((url) => ({
     url,
     issuingAgency: 'Business Queensland',

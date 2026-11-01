@@ -68,3 +68,8 @@ export interface GrantDocument {
   contentHash: string;
   lastChangedAt: string | null;
 }
+
+/** Current staging representation; revision is bookkeeping, not part of normalized content hashes. */
+export interface StoredGrantDocument extends GrantDocument {
+  revision: number;
+}

@@ -12,6 +12,9 @@ const tokens = (s) =>
     .split(/\s+/)
     .filter((t) => t.length > 1 && !STOP.has(t));
 
+export const grantDetailsPath = (grant) =>
+  grant.source === 'Queensland Grants Finder' && /^\d+$/.test(grant.id) ? `/service-details/${grant.id}` : null;
+
 /** Parses the JSON output of a `knowledge_base_retrieve` MCP call into grant records. */
 export function parseRetrievedGrants(output) {
   let parsed;
@@ -21,22 +24,27 @@ export function parseRetrievedGrants(output) {
     return [];
   }
   const grants = [];
-  for (const doc of parsed?.documents ?? []) {
+  for (const doc of Array.isArray(parsed?.documents) ? parsed.documents : []) {
     let g;
     try {
       g = JSON.parse(doc.content);
     } catch {
       continue; // synthesized answer / non-JSON chunk
     }
-    if (!g?.id || !g?.title) continue;
+    if (!g?.id || typeof g.title !== 'string' || !g.title.trim()) continue;
+    const status = typeof g.status === 'string' ? g.status : '';
+    const closing = g.closingDate ? Date.parse(g.closingDate) : null;
+    const isOpen = status.toLowerCase() === 'open' && (closing === null || closing >= Date.now());
+    const url = typeof g.url === 'string' && /^https?:\/\//i.test(g.url) ? g.url : '';
     grants.push({
       id: String(g.id),
+      detailsPath: grantDetailsPath(g),
       source: g.source ?? '',
       title: g.title,
       summary: g.summary ?? '',
-      url: g.url ?? '',
-      status: g.status ?? (g.isOpen ? 'Open' : ''),
-      isOpen: g.isOpen === true,
+      url,
+      status: status.toLowerCase() === 'open' && !isOpen ? 'Closed' : status,
+      isOpen,
       openingDate: g.openingDate ?? null,
       closingDate: g.closingDate ?? null,
       amount: typeof g.amount === 'number' ? g.amount : null,

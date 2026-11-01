@@ -7,14 +7,19 @@ const text = (value: unknown) => typeof value === 'string' && value.trim() ? val
 const values = (value: unknown): string[] =>
   [...new Set((Array.isArray(value) ? value : value ? [value] : []).filter((v): v is string => typeof v === 'string' && !!v.trim()).map((v) => v.trim()))].sort();
 
+function codePoint(value: number): string {
+  return Number.isInteger(value) && value > 0 && value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff)
+    ? String.fromCodePoint(value) : '\uFFFD';
+}
+
 export function plain(value: unknown): string | null {
   const html = text(value);
   if (!html) return null;
   const result = html
     .replace(/<\s*br\s*\/?>|<\/(?:p|li|h[1-6])>/gi, '\n')
     .replace(/<[^>]*>/g, ' ')
-    .replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_m, n: string) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_m, n: string) => codePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_m, n: string) => codePoint(parseInt(n, 16)))
     .replace(/&(amp|lt|gt|quot|apos|nbsp);/gi, (_m, n: string) =>
       ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' })[n.toLowerCase()]!)
     .replace(/[ \t\u00a0]+/g, ' ').replace(/\s+([.,;:!?])/g, '$1')

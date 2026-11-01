@@ -7,6 +7,7 @@ param deploymentContainerUrl string
 param appInsightsConnectionString string
 
 @description('Additional app settings (name -> value).')
+@secure()
 param appSettings object
 
 // Flex Consumption plan (Linux, serverless, scale to zero).

@@ -40,8 +40,9 @@ export function parseBusinessPage(html: string): { key: string; cq: string } {
   };
 }
 
-export async function fetchBusinessGrants(fetcher: typeof fetch = fetch): Promise<BusinessSnapshot> {
-  const landing = await fetcher(PAGE);
+export async function fetchBusinessGrants(fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<BusinessSnapshot> {
+  const timeout = () => signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000);
+  const landing = await fetcher(PAGE, { signal: timeout() });
   if (!landing.ok) throw new Error(`business.gov.au page returned HTTP ${landing.status}`);
   const { key, cq } = parseBusinessPage(await landing.text());
   const results: BusinessResult[] = [];
@@ -55,6 +56,7 @@ export async function fetchBusinessGrants(fetcher: typeof fetch = fetch): Promis
         q: '', cq, searchHub: 'Grants and programs', sortCriteria: '@cgrantsort ascending',
         firstResult: results.length, numberOfResults: PAGE_SIZE, fieldsToInclude: FIELDS,
       }),
+      signal: timeout(),
     });
     if (!response.ok) throw new Error(`business.gov.au search returned HTTP ${response.status} at offset ${results.length}`);
     const page: unknown = await response.json();
@@ -75,5 +77,6 @@ function isPage(value: unknown): value is { totalCount: number; results: Busines
   return Number.isSafeInteger(page.totalCount) && typeof page.totalCount === 'number' && page.totalCount > 0
     && Array.isArray(page.results) && page.results.every((r: unknown) =>
       !!r && typeof r === 'object' && typeof (r as BusinessResult).title === 'string'
-      && typeof (r as BusinessResult).raw === 'object' && (r as BusinessResult).raw !== null);
+      && typeof (r as BusinessResult).raw === 'object' && (r as BusinessResult).raw !== null
+      && !Array.isArray((r as BusinessResult).raw));
 }

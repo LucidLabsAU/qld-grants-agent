@@ -65,6 +65,7 @@ var names = {
   functionApp: 'func-${environmentName}-${token}'
 }
 var grantsContainer = 'grants'
+var grantsHistoryContainer = 'grants-history'
 var deploymentContainer = 'app-package'
 var indexerName = 'grants-indexer'
 var knowledgeBaseName = 'grants-kb'
@@ -86,7 +87,7 @@ module storage 'modules/storage.bicep' = {
     location: location
     tags: union(tags, storageExtraTags)
     name: names.storage
-    containers: [grantsContainer, deploymentContainer]
+    containers: [grantsContainer, grantsHistoryContainer, deploymentContainer]
   }
 }
 
@@ -134,6 +135,7 @@ module functionApp 'modules/function.bicep' = {
       QLD_API_KEY: qldApiKey
       GRANTS_STORAGE_ACCOUNT_URL: storage.outputs.blobEndpoint
       GRANTS_CONTAINER: grantsContainer
+      GRANTS_HISTORY_CONTAINER: grantsHistoryContainer
       SEARCH_ENDPOINT: search.outputs.endpoint
       SEARCH_INDEXER_NAME: indexerName
       FOUNDRY_OPENAI_ENDPOINT: foundry.outputs.openAiEndpoint
@@ -166,6 +168,7 @@ output SEARCH_ENDPOINT string = search.outputs.endpoint
 output STORAGE_ACCOUNT_ID string = storage.outputs.id
 output GRANTS_STORAGE_ACCOUNT_URL string = storage.outputs.blobEndpoint
 output GRANTS_CONTAINER string = grantsContainer
+output GRANTS_HISTORY_CONTAINER string = grantsHistoryContainer
 output SEARCH_INDEXER_NAME string = indexerName
 output FOUNDRY_ACCOUNT_NAME string = foundry.outputs.accountName
 output FOUNDRY_PROJECT_NAME string = foundry.outputs.projectName

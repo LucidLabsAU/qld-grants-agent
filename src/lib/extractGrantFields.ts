@@ -101,7 +101,8 @@ function isQuote(quote: unknown, page: string): quote is string {
 function quoteMatchesDate(quote: string, iso: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if (!m) return false;
-  const [year, month, day] = [m[1], +m[2], +m[3]];
+  const year = m[1]!;
+  const [month, day] = [Number(m[2]), Number(m[3])];
   const d = new Date(Date.UTC(+year, month - 1, day));
   if (d.getUTCFullYear() !== +year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return false;
   const q = squash(quote);
@@ -113,7 +114,7 @@ function quoteMatchesDate(quote: string, iso: string): boolean {
 /** The quote must literally contain the number, either as digits or as "N million". */
 function quoteMatchesAmount(quote: string, amount: number): boolean {
   const q = squash(quote).replace(/,/g, '');
-  if (new RegExp(`(?<![\\d.])${amount}(?![\\d])`).test(q)) return true;
+  if (new RegExp(`(?<![\\d.])${amount}(?!\\d|\\.\\d|\\s*(?:million|m|thousand|k|billion|bn)\\b)`).test(q)) return true;
   return amount % 1_000_000 === 0 && new RegExp(`(?<![\\d.])${amount / 1_000_000}\\s*(?:million|m)\\b`).test(q);
 }
 
@@ -137,8 +138,9 @@ export function validateExtraction(raw: unknown, pageText: string): Extraction {
     if (c && isQuote(c.quote, page) && typeof c.value === 'string' && quoteMatchesDate(c.quote, c.value)) out[key] = c.value;
   }
   const amount = claim(raw, 'amount');
-  if (amount && isQuote(amount.quote, page) && typeof amount.value === 'number' && Number.isFinite(amount.value)
-    && amount.value >= 0 && quoteMatchesAmount(amount.quote, amount.value)) out.amount = amount.value;
+  if (amount && isQuote(amount.quote, page) && typeof amount.value === 'number' && Number.isSafeInteger(amount.value)
+    && amount.value >= 0 && amount.value <= 1_000_000_000
+    && quoteMatchesAmount(amount.quote, amount.value)) out.amount = amount.value;
 
   const summary = claim(raw, 'summary');
   if (summary && isQuote(summary.value, page) && typeof summary.value === 'string'
@@ -155,6 +157,7 @@ const hasValues = (e: Extraction) => Object.values(e).some((v) => v !== null);
 
 /** Runs extraction, deterministic validation and the judge. Returns null when nothing trustworthy remains. */
 export async function extractGrantFields(client: ChatClient, title: string, pageText: string): Promise<Extraction | null> {
+  pageText = pageText.slice(0, MAX_PAGE_CHARS);
   const raw = JSON.parse(await client.complete(extractionMessages(title, pageText), 'grant_fields', EXTRACTION_SCHEMA));
   const extraction = validateExtraction(raw, pageText);
   if (!hasValues(extraction)) return null;
@@ -170,6 +173,7 @@ export class FoundryChatClient implements ChatClient {
     private readonly deployment: string,
     private readonly credential: TokenCredential,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly signal?: AbortSignal,
   ) {}
 
   async complete(messages: ChatMessage[], schemaName: string, schema: object): Promise<string> {
@@ -184,7 +188,7 @@ export class FoundryChatClient implements ChatClient {
         max_completion_tokens: 2000,
         response_format: { type: 'json_schema', json_schema: { name: schemaName, strict: true, schema } },
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: this.signal ? AbortSignal.any([this.signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000),
     });
     if (!res.ok) throw new Error(`Azure OpenAI returned HTTP ${res.status}`);
     const content = ((await res.json()) as { choices?: { message?: { content?: string } }[] }).choices?.[0]?.message?.content;

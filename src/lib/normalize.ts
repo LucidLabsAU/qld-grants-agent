@@ -1,4 +1,4 @@
-import { parseQldDate } from './dates.js';
+import { parseQldDate, parseQldClosingDate } from './dates.js';
 import type { DimensionKey, Dimensions, GrantDocument, RawService } from './types.js';
 
 /** Detail keys as they appear in services.json. */
@@ -62,8 +62,7 @@ const uniqueSorted = (values: Iterable<string>) => [...new Set(values)].sort((a,
 export function computeIsOpen(status: string | null, closingDate: string | null, now: Date): boolean {
   if (status?.toLowerCase() !== 'open') return false;
   if (!closingDate) return true;
-  const endOfClosingDay = new Date(closingDate).getTime() + 24 * 60 * 60 * 1000;
-  return endOfClosingDay > now.getTime();
+  return new Date(closingDate).getTime() >= now.getTime();
 }
 
 /** Maps a raw service record + dimension lookup into a flat, index-ready document (hash fields left empty). */
@@ -82,7 +81,7 @@ export function normalizeGrant(raw: RawService, lookup: DimensionLookup, now: Da
   }
 
   const status = detail(raw, F.status);
-  const closingDate = parseQldDate(detail(raw, F.closingDate));
+  const closingDate = parseQldClosingDate(detail(raw, F.closingDate));
 
   return {
     id: String(raw.id),

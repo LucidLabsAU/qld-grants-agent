@@ -17,8 +17,8 @@
 | **Results page** | An insights bar ("3 of your AI picks are in these results") with a *Compare my picks* action. It also adds **AI pick** badges and highlights on the site's own result cards. |
 | **Detail page** | An inline AI bar under the title with *Ask AI about this grant*, *Am I eligible?* and *Find similar open grants*. It also shows why the AI recommended the grant ("AI pick for 'I run a small café…'"). |
 
-The conversation **persists across page changes**, full reloads and tabs. Card links use the site's own Vue router
-(`history.pushState` + `popstate`), so moving between pages feels instant.
+The conversation **persists across page changes**, full reloads and tabs. Queensland finder card links use the site's own Vue router
+(`history.pushState` + `popstate`), so moving between pages feels instant. Other publishers' cards open their official URL instead.
 
 ## Architecture
 
@@ -51,7 +51,13 @@ flowchart LR
 - **Grant cards come from the retrieval, not the prose.** The worker parses the `mcp_call` output of the knowledge base
   (id, title, status, dates, agency, url). It then keeps the grants the answer actually mentions (open programs first).
 - **Publisher-specific links.** Queensland Grants Finder cards navigate to that site's detail route. business.gov.au
-  listings open their public business.gov.au detail URL in a new tab; they do not have a Queensland-site detail page.
+  listings, curated/discovered pages and SmartyGrants rounds open their official URL in a new tab; they do not have a Queensland-site detail page.
+- **Stream and restart recovery.** Only an explicit completed response is marked successful. Interrupted, malformed
+  or incomplete streams produce a retryable error; a restarted worker clears stale busy state. HTTP and streamed
+  rate-limit errors use the same countdown retry path. Clearing a conversation goes through the worker so cached
+  messages and old AI-pick highlights cannot reappear.
+- **Current card status.** Availability is recomputed from status and the closing timestamp rather than trusting
+  the sync-time `isOpen` flag. Unknown status is not described as closed.
 
 ## Run it
 
@@ -80,6 +86,9 @@ npm run bridge
 
 The options page (right-click the toolbar icon, then **Extension options**) sets the bridge URL, tests the connection
 and clears the conversation.
+
+Run `npm test` for local Node regression tests (no Azure credentials or browser installation needed), or
+`npm run test:demo` from the repository root.
 
 ## Re-record the journey
 
@@ -110,6 +119,7 @@ extension/
   panel.css          Shadow DOM styles
   lib/grants.js      parse retrieved grants from the knowledge-base tool output; match them to the answer
   lib/markdown.js    small, safe DOM markdown renderer (no innerHTML for model text)
+  lib/stream.js      SSE framing, completed-response validation and stream failures
   options.html/.js   bridge URL, connection test, clear conversation
 bridge/server.mjs    local auth relay to the Foundry Responses API
 tools/capture.mjs    scripted journey: screenshots + MP4

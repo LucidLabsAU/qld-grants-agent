@@ -24,16 +24,22 @@ export function parseQldDate(input: string | null | undefined): string | null {
   if (!s) return null;
 
   let m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T].*)?$/.exec(s);
-  if (m) return toIso(+m[1], +m[2], +m[3]);
+  if (m) return toIso(Number(m[1]), Number(m[2]), Number(m[3]));
 
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/.exec(s);
-  if (m) return toIso(+m[3], +m[2], +m[1]);
+  if (m) return toIso(Number(m[3]), Number(m[2]), Number(m[1]));
 
   m = /^(\d{1,2})[- ]([A-Za-z]{3})[A-Za-z]*[- ](\d{2}|\d{4})$/.exec(s);
   if (m) {
-    const month = MONTHS[m[2].toLowerCase()];
-    return month ? toIso(+m[3], month, +m[1]) : null;
+    const month = MONTHS[(m[2] ?? '').toLowerCase()];
+    return month ? toIso(Number(m[3]), month, Number(m[1])) : null;
   }
 
   return null;
+}
+
+/** Date-only deadlines are inclusive of the entire Queensland closing day. */
+export function parseQldClosingDate(input: string | null | undefined): string | null {
+  const date = parseQldDate(input);
+  return date?.replace('T00:00:00', 'T23:59:59.999') ?? null;
 }

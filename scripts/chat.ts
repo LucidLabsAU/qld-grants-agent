@@ -7,7 +7,7 @@
  */
 import { DefaultAzureCredential } from '@azure/identity';
 import { createInterface } from 'node:readline';
-import { argValue, loadScriptEnv, requireEnv } from './env.js';
+import { argValue, loadScriptEnv, positionalArgs, requireEnv } from './env.js';
 import { FoundryProjectClient, outputText } from './foundry.js';
 
 const env = loadScriptEnv();
@@ -15,11 +15,7 @@ const client = new FoundryProjectClient(requireEnv(env, 'FOUNDRY_PROJECT_ENDPOIN
 const agentName = argValue('--agent') ?? env.AGENT_NAME ?? 'qld-grants-agent';
 const debug = process.argv.includes('--debug');
 
-const flagsWithValue = new Set(['--agent', '-g', '--resource-group', '--deployment']);
-const question = process.argv
-  .slice(2)
-  .filter((a, i, all) => !a.startsWith('-') && !flagsWithValue.has(all[i - 1] ?? ''))
-  .join(' ');
+const question = positionalArgs(['--agent']).join(' ');
 
 const conversation = await client.createConversation();
 
