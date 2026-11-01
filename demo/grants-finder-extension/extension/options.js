@@ -21,6 +21,11 @@ document.getElementById('test').addEventListener('click', async () => {
 });
 
 document.getElementById('clear').addEventListener('click', async () => {
-  await chrome.storage.local.remove('gc');
-  status.textContent = 'Conversation cleared.';
+  const { gc } = await chrome.storage.local.get('gc');
+  if (gc?.busy) {
+    status.textContent = 'Wait for the current response before clearing the conversation.';
+    return;
+  }
+  const result = await chrome.runtime.sendMessage({ type: 'reset' });
+  status.textContent = result?.ok ? 'Conversation cleared.' : `Could not clear conversation: ${result?.error ?? 'No response'}`;
 });

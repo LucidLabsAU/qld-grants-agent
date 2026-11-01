@@ -25,16 +25,17 @@ export class SearchRestClient {
         'Content-Type': 'application/json',
         Prefer: 'return=representation',
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? null : JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
     });
 
     const text = await res.text();
-    const data = (text ? JSON.parse(text) : undefined) as T;
     if (!res.ok) {
       const error = new Error(`${method} ${path} failed: ${res.status} ${text}`) as Error & { status: number };
       error.status = res.status;
       throw error;
     }
+    const data = (text ? JSON.parse(text) : undefined) as T;
     return { status: res.status, data };
   }
 
@@ -44,7 +45,7 @@ export class SearchRestClient {
       await this.request('POST', `/indexers/${encodeURIComponent(name)}/run`);
       return 'started';
     } catch (err) {
-      if ((err as { status?: number }).status === 409) return 'alreadyRunning';
+      if (err instanceof Error && 'status' in err && err.status === 409) return 'alreadyRunning';
       throw err;
     }
   }

@@ -15,12 +15,12 @@
  */
 import { DefaultAzureCredential } from '@azure/identity';
 import { SearchRestClient } from '../src/lib/searchClient.js';
-import { loadScriptEnv, requireEnv } from './env.js';
+import { loadScriptEnv, positionalArgs, requireEnv } from './env.js';
 
 const env = loadScriptEnv();
 const search = new SearchRestClient(requireEnv(env, 'SEARCH_ENDPOINT'), new DefaultAzureCredential());
 const index = env.SEARCH_INDEX_NAME;
-const [scenario = 'hybrid', text = 'grants for small business'] = process.argv.slice(2).filter((a) => !a.startsWith('--'));
+const [scenario = 'hybrid', text = 'grants for small business'] = positionalArgs();
 const raw = process.argv.includes('--raw');
 const allJurisdictions = process.argv.includes('--all-jurisdictions');
 const LOCATION_FILTER = "jurisdictions/any(j: j eq 'Queensland')";
@@ -28,7 +28,7 @@ const LOCATION_FILTER = "jurisdictions/any(j: j eq 'Queensland')";
 /** Open = flagged Open and not past its closing date (evaluated at query time, so it never goes stale). */
 const OPEN_FILTER = `status eq 'Open' and (closingDate eq null or closingDate ge ${new Date().toISOString()})`
   + (allJurisdictions ? '' : ` and ${LOCATION_FILTER}`);
-const SELECT = 'id,title,source,jurisdictions,status,closingDate,amount,issuingAgency,assistanceType,categories,url';
+const SELECT = 'id,title,source,jurisdictions,status,closingDate,amount,issuingAgency,assistanceType,categories,url,revision';
 const vectorQuery = (t: string, k = 50) => ({ kind: 'text', text: t, fields: 'titleVector,descriptionVector', k });
 
 const queries: Record<string, () => object> = {

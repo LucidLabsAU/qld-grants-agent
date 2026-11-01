@@ -3,6 +3,7 @@
 // render state and send intents ("send", "setOpen", "reset").
 
 import { matchGrants, parseQuery, parseRetrievedGrants } from './lib/grants.js';
+import { responseEvents } from './lib/stream.js';
 
 const KEY = 'gc';
 const SITE = 'https://www.grants.services.qld.gov.au/';
@@ -11,10 +12,24 @@ const empty = () => ({ open: false, busy: false, messages: [], picks: {} });
 
 let state = null;
 let saveTimer = null;
+let loading = null;
 
 async function getState() {
-  state ??= (await chrome.storage.local.get(KEY))[KEY] ?? empty();
-  return state;
+  if (state) return state;
+  loading ??= (async () => {
+    state = (await chrome.storage.local.get(KEY))[KEY] ?? empty();
+    if (state.busy) {
+      state.busy = false;
+      const bot = state.messages.at(-1);
+      if (bot?.role === 'assistant') {
+        bot.status = 'error';
+        bot.error = 'The previous response was interrupted. Please try again.';
+      }
+      await save(true);
+    }
+    return state;
+  })();
+  return loading;
 }
 
 function save(now = false) {
@@ -41,36 +56,13 @@ function setStep(msg, key, patch) {
   Object.assign(step, patch);
 }
 
-async function* sse(body) {
-  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
-  let buf = '';
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += value;
-    let i;
-    while ((i = buf.indexOf('\n\n')) >= 0) {
-      const block = buf.slice(0, i);
-      buf = buf.slice(i + 2);
-      const data = block
-        .split('\n')
-        .filter((l) => l.startsWith('data:'))
-        .map((l) => l.slice(5).trimStart())
-        .join('\n');
-      if (data && data !== '[DONE]') {
-        try {
-          yield JSON.parse(data);
-        } catch {
-          /* ignore keep-alives */
-        }
-      }
-    }
-  }
-}
-
 async function postJson(url, body) {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const error = new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+    error.rateLimited = res.status === 429;
+    throw error;
+  }
   return res;
 }
 
@@ -105,13 +97,14 @@ async function send({ text, context }) {
     const input = parts.length > 1 ? parts.join('\n\n') : question;
 
     for (let attempt = 0; ; attempt++) {
-      const conversation = (await (await postJson(`${base}/v1/conversations`, {})).json()).id;
-      const res = await postJson(`${base}/v1/responses`, { conversation, input });
       try {
+        const conversation = (await (await postJson(`${base}/v1/conversations`, {})).json()).id;
+        const res = await postJson(`${base}/v1/responses`, { conversation, input });
         await consume(res, bot, retrieved, () => ++searches);
         break;
       } catch (err) {
         if (!err.rateLimited || attempt >= 3 || bot.text) throw err;
+        retrieved.length = 0;
         for (let wait = 12 + attempt * 12; wait > 0; wait--) {
           setStep(bot, 'search', { state: 'active', label: 'High demand right now', detail: `Retrying in ${wait}s…` });
           save();
@@ -145,7 +138,7 @@ function recap(history) {
   for (let i = 0; i < history.length - 1; i++) {
     const [u, a] = [history[i], history[i + 1]];
     if (u.role !== 'user' || a.role !== 'assistant' || a.status !== 'done') continue;
-    const picks = a.grants?.length ? ` You recommended: ${a.grants.map((g) => `"${g.title}" (${g.isOpen ? 'open' : 'closed'}${g.closingDate ? `, closes ${String(g.closingDate).slice(0, 10)}` : ''})`).join(', ')}.` : '';
+    const picks = a.grants?.length ? ` You recommended: ${a.grants.map((g) => `"${g.title}" (${g.status || 'status unknown'}${g.closingDate ? `, closes ${String(g.closingDate).slice(0, 10)}` : ''})`).join(', ')}.` : '';
     const gist = a.text.replace(/【[^】]*】/g, '').replace(/\s+/g, ' ').slice(0, 500);
     turns.push(`- User asked: "${u.text.slice(0, 300)}".${picks} Your answer began: "${gist}…"`);
   }
@@ -154,7 +147,7 @@ function recap(history) {
 }
 
 async function consume(res, bot, retrieved, countSearch) {
-  for await (const ev of sse(res.body)) {
+  for await (const ev of responseEvents(res.body)) {
     switch (ev.type) {
       case 'response.output_item.added':
         if (ev.item?.type === 'mcp_call' || ev.item?.type === 'mcp_list_tools') {
@@ -189,13 +182,6 @@ async function consume(res, bot, retrieved, countSearch) {
       case 'response.output_text.done':
         if (ev.text) bot.text = ev.text;
         break;
-      case 'response.failed':
-      case 'error': {
-        const e = ev.error ?? ev.response?.error ?? {};
-        const err = new Error(e.message ?? ev.message ?? 'The agent could not complete the request.');
-        err.rateLimited = /rate_limit|too_many_requests/i.test(`${e.code} ${e.type}`);
-        throw err;
-      }
     }
     save();
   }
@@ -229,7 +215,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
       }
     }
     reply({ ok: true });
-  })();
+  })().catch((error) => {
+    console.error('Grants companion message failed:', error);
+    reply({ ok: false, error: error.message });
+  });
   return true;
 });
 
@@ -250,3 +239,5 @@ chrome.action.onClicked.addListener(toggleIn);
 chrome.commands.onCommand.addListener(async (cmd, tab) => {
   if (cmd === 'toggle-panel') toggleIn(tab ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]);
 });
+
+getState().catch((error) => console.error('Could not restore grants companion state:', error));

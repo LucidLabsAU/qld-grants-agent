@@ -9,30 +9,35 @@ const sitemap = ['/running-business/support-services/financial/grants/growth-fun
   '/industries/hospitality/liquor/checklists/subsidiary-on-premises-meals',
   '/industries/manufacturing/grant-programs/ai-uplift',
   '/running-business/starting-business/licences',
-].map((p) => `<url><loc>${B}${p}</loc></url>`).join('')
-  + '<url><loc>https://evil.example/grants/x</loc></url>';
+].map((p) => `<url><loc>${B}${p}</loc></url>`).join('');
+const sitemapXml = `<urlset>${sitemap}<url><loc>https://evil.example/grants/x</loc></url></urlset>`;
 
 describe('Business Queensland discovery', () => {
   it('selects funding pages, excluding guidance, noise, other hosts and known URLs', () => {
-    expect(selectFundingUrls(sitemap, new Set())).toEqual([
+    expect(selectFundingUrls(sitemapXml, new Set())).toEqual([
       `${B}/industries/manufacturing/grant-programs/ai-uplift`,
       `${B}/running-business/support-services/financial/grants/growth-fund`,
     ]);
-    expect(selectFundingUrls(sitemap, new Set([urlKey(`${B}/running-business/support-services/financial/grants/growth-fund/`)]))).toHaveLength(1);
+    expect(selectFundingUrls(sitemapXml, new Set([urlKey(`${B}/running-business/support-services/financial/grants/growth-fund/`)]))).toHaveLength(1);
   });
 
   it('skips pages that fail rather than failing the run', async () => {
     const body = '<main><h1>AI Uplift</h1><p>' + 'Funding for manufacturers to adopt AI tools. '.repeat(10) + '</p></main>';
     const fetcher = vi.fn(async (url: string | URL | Request) => {
       const u = String(url);
-      if (u.endsWith('sitemap.xml')) return new Response(sitemap);
+      if (u.endsWith('sitemap.xml')) return new Response(sitemapXml);
       return u.includes('ai-uplift') ? new Response(body) : new Response('no', { status: 500 });
     }) as unknown as typeof fetch;
     const result = await fetchBusinessQldPages(new Set(), { fetcher, log: () => {} });
     expect(result.documents.map((d) => d.title)).toEqual(['AI Uplift']);
-    expect(result.documents[0].id).toMatch(/^bq-/);
+    expect(result.documents[0]!.id).toMatch(/^bq-/);
     expect(result.failedIds).toHaveLength(1);
     expect(result.failedIds[0]).toMatch(/^bq-/);
+  });
+
+  it('refuses an unrecognised sitemap instead of removing all discovered grants', async () => {
+    const fetcher = vi.fn(async () => new Response('<html>Temporarily unavailable</html>'));
+    await expect(fetchBusinessQldPages(new Set(), { fetcher })).rejects.toThrow(/unsafe snapshot/);
   });
 });
 
@@ -49,8 +54,8 @@ describe('SmartyGrants portals', () => {
   it('reads status and dates deterministically from the portal list', () => {
     const rounds = parsePortalRounds(HOME);
     expect(rounds.map((r) => [r.path, r.upcoming, r.openingDate, r.closingDate])).toEqual([
-      ['/ENV26-27', false, null, '2026-11-02T00:00:00+10:00'],
-      ['/CCA27', true, '2027-01-25T00:00:00+10:00', '2027-02-26T00:00:00+10:00'],
+      ['/ENV26-27', false, null, '2026-11-02T23:59:59.999+10:00'],
+      ['/CCA27', true, '2027-01-25T08:00:00+10:00', '2027-02-26T23:59:59.999+10:00'],
     ]);
     expect(() => parsePortalRounds('<html></html>')).toThrow(/not recognised/);
   });
@@ -59,13 +64,13 @@ describe('SmartyGrants portals', () => {
     const html = HOME.replace(/<div class="chooseform"><h3><a href="\/\/evil[\s\S]*$/, '<footer>Website footer</footer>');
     const rounds = parsePortalRounds(html);
     expect(rounds).toHaveLength(2);
-    expect(rounds[0].blurb).not.toContain('Upcoming Rounds');
-    expect(rounds[1].blurb).not.toContain('Website footer');
+    expect(rounds[0]!.blurb).not.toContain('Upcoming Rounds');
+    expect(rounds[1]!.blurb).not.toContain('Website footer');
     expect(() => parsePortalRounds(html.slice(0, html.indexOf('<div>Submissions')))).toThrow(/round markup not recognised/);
   });
 
   it('builds documents with status, funder and no application-form access', async () => {
-    const doc = roundToDocument({ slug: 'brisbane', funder: 'Brisbane City Council' }, parsePortalRounds(HOME)[0], null);
+    const doc = roundToDocument({ slug: 'brisbane', funder: 'Brisbane City Council' }, parsePortalRounds(HOME)[0]!, null);
     expect(doc).toMatchObject({ status: 'Open', url: 'https://brisbane.smartygrants.com.au/ENV26-27', source: 'SmartyGrants (Brisbane City Council)' });
     const fetcher = vi.fn(async (url: string | URL | Request) =>
       new Response(String(url).endsWith('.com.au/') ? HOME : '<main>round</main>')) as unknown as typeof fetch;
@@ -76,10 +81,20 @@ describe('SmartyGrants portals', () => {
 
   it('computes availability using the end of the Queensland closing day', () => {
     const portal = { slug: 'brisbane', funder: 'Brisbane City Council' };
-    const round = parsePortalRounds(HOME)[0];
+    const round = parsePortalRounds(HOME)[0]!;
     expect(roundToDocument(portal, round, null, new Date('2026-11-02T23:59:00+10:00')).isOpen).toBe(true);
     expect(roundToDocument(portal, round, null, new Date('2026-11-03T00:00:00+10:00')).isOpen).toBe(false);
-    expect(roundToDocument(portal, parsePortalRounds(HOME)[1], null, new Date('2026-11-01T00:00:00+10:00')).isOpen).toBe(false);
+    expect(roundToDocument(portal, parsePortalRounds(HOME)[1]!, null, new Date('2026-11-01T00:00:00+10:00')).isOpen).toBe(false);
+  });
+
+  it('honours explicitly timed deadlines rather than extending them to midnight', () => {
+    const round = parsePortalRounds(HOME.replace('midnight (end of day) 2 November', '5:00pm 2 November'))[0]!;
+    expect(round.closingDate).toBe('2026-11-02T17:00:00+10:00');
+    expect(roundToDocument({ slug: 'brisbane', funder: 'Council' }, round, null, new Date('2026-11-02T17:01:00+10:00')).isOpen).toBe(false);
+  });
+
+  it('never selects reserved application-form routes', () => {
+    expect(parsePortalRounds(HOME.replace('/ENV26-27', '/applicant'))).toHaveLength(1);
   });
 
   it('rejects a failed portal snapshot rather than removing its existing grants', async () => {
@@ -100,7 +115,7 @@ describe('SmartyGrants portals', () => {
       portals: [{ slug: 'brisbane', funder: 'Brisbane City Council' }],
     });
     expect(result.documents).toHaveLength(2);
-    expect(result.documents[0].eligibility).toBe(parsePortalRounds(HOME)[0].blurb);
+    expect(result.documents[0]!.eligibility).toBe(parsePortalRounds(HOME)[0]!.blurb);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('using listing only after page fetch failed'));
   });
 });

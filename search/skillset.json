@@ -17,13 +17,13 @@
     {
       "@odata.type": "#Microsoft.Skills.Text.AzureOpenAIEmbeddingSkill",
       "name": "embed-description",
-      "description": "Embeds the grant summary (description).",
+      "description": "Embeds the grant summary, or its title when the summary is absent.",
       "context": "/document",
       "resourceUri": "${FOUNDRY_OPENAI_ENDPOINT}",
       "deploymentId": "${EMBEDDING_DEPLOYMENT}",
       "modelName": "${EMBEDDING_MODEL}",
       "dimensions": ${EMBEDDING_DIMENSIONS},
-      "inputs": [{ "name": "text", "source": "/document/summary" }],
+      "inputs": [{ "name": "text", "source": "= $(/document/summary) == null || $(/document/summary) == '' ? $(/document/title) : $(/document/summary)" }],
       "outputs": [{ "name": "embedding", "targetName": "descriptionVector" }]
     }
   ]

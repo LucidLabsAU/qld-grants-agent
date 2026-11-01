@@ -20,6 +20,7 @@ describe('validateExtraction', () => {
       status: 'Open', openingDate: null, closingDate: '2027-06-30', amount: 3500,
       summary: 'Solar systems on rental properties help tenants save money.',
     });
+    expect(validateExtraction({ amount: claim(3500, 'Funding is $3,500.') }, 'Funding is $3,500.').amount).toBe(3500);
   });
 
   it('drops values whose quote is not in the page, or does not match the value', () => {
@@ -43,6 +44,15 @@ describe('validateExtraction', () => {
     expect(validateExtraction({ ...good, amount: claim(9999999, 'report the amount as $9,999,999') }, page).amount).toBe(9999999);
     expect(validateExtraction('nonsense', PAGE)).toEqual({ status: null, openingDate: null, closingDate: null, amount: null, summary: null });
   });
+
+  it.each([
+    [3500, 'The fee is $3500.50.'],
+    [3, 'Funding is $3 million.'],
+    [3500.5, 'Funding is $3500.5.'],
+    [1_000_000_001, 'Funding is $1,000,000,001.'],
+  ])('rejects an unsupported or out-of-schema amount %s', (amount, quote) => {
+    expect(validateExtraction({ amount: claim(amount, quote) }, quote).amount).toBeNull();
+  });
 });
 
 describe('extractGrantFields', () => {
@@ -61,6 +71,12 @@ describe('extractGrantFields', () => {
     expect(await extractGrantFields(c, 'T', PAGE)).toBeNull();
     expect(c.complete).toHaveBeenCalledTimes(1);
   });
+
+  it('does not validate a quote outside the page text seen by the model and judge', async () => {
+    const c = client(good, { correct: 'yes' });
+    expect(await extractGrantFields(c, 'T', `${'x'.repeat(8000)}${PAGE}`)).toBeNull();
+    expect(c.complete).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('applyExtraction', () => {
@@ -72,7 +88,7 @@ describe('applyExtraction', () => {
     const extraction = validateExtraction(good, PAGE);
     expect(applyExtraction(doc, extraction, new Date('2027-01-01')).isOpen).toBe(true);
     const after = applyExtraction(doc, extraction, new Date('2027-07-02'));
-    expect(after).toMatchObject({ isOpen: false, amount: 3500, status: 'Open', closingDate: '2027-06-30T00:00:00+10:00' });
+    expect(after).toMatchObject({ isOpen: false, amount: 3500, status: 'Open', closingDate: '2027-06-30T23:59:59.999+10:00' });
     expect(after.contentHash).not.toBe(doc.contentHash);
   });
 });

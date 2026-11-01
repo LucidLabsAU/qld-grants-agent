@@ -4,14 +4,14 @@ import type { GrantDocument } from './types.js';
 const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 /** Identity of the grant's *content*, independent of its upstream id – used to detect duplicates. */
-export function contentFingerprint(doc: GrantDocument): string {
-  const { id, sourceIds, contentHash, lastChangedAt, ...content } = doc;
+export function contentFingerprint(doc: GrantDocument & { revision?: number }): string {
+  const { id, sourceIds, contentHash, lastChangedAt, revision, ...content } = doc;
   return sha256(content);
 }
 
 /** Hash of everything that ends up in the index (excluding bookkeeping) – used to detect changes. */
-export function computeContentHash(doc: GrantDocument): string {
-  const { contentHash, lastChangedAt, ...indexed } = doc;
+export function computeContentHash(doc: GrantDocument & { revision?: number }): string {
+  const { contentHash, lastChangedAt, revision, ...indexed } = doc;
   return sha256(indexed);
 }
 

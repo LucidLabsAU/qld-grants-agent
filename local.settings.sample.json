@@ -7,6 +7,7 @@
     "QLD_API_KEY": "<your-x-api-key>",
     "GRANTS_STORAGE_ACCOUNT_URL": "https://<storage-account>.blob.core.windows.net",
     "GRANTS_CONTAINER": "grants",
+    "GRANTS_HISTORY_CONTAINER": "grants-history",
     "SEARCH_ENDPOINT": "https://<search-service>.search.windows.net",
     "SEARCH_INDEXER_NAME": "grants-indexer",
     "FOUNDRY_OPENAI_ENDPOINT": "https://<foundry-account>.openai.azure.com",

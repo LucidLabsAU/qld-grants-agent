@@ -30,7 +30,8 @@ export class FoundryProjectClient {
     const res = await fetch(`${this.projectEndpoint.replace(/\/+$/, '')}${path}`, {
       method,
       headers: { Authorization: `Bearer ${token.token}`, 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? null : JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`${method} ${path} failed: ${res.status} ${text}`);

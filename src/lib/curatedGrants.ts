@@ -2,7 +2,9 @@ import { createHash } from 'node:crypto';
 import { plain } from './businessGrants.js';
 import { computeContentHash } from './dedupe.js';
 import { CURATED_SOURCES, type CuratedSource } from './curatedSources.js';
-import { parseQldDate } from './dates.js';
+import { parseQldDate, parseQldClosingDate } from './dates.js';
+import { mapLimit } from './concurrency.js';
+export { mapLimit } from './concurrency.js';
 import { computeIsOpen } from './normalize.js';
 import type { Extraction } from './extractGrantFields.js';
 import type { GrantDocument } from './types.js';
@@ -85,7 +87,7 @@ export type FieldExtractor = (title: string, pageText: string) => Promise<Extrac
 export function applyExtraction(doc: GrantDocument, extraction: Extraction, now = new Date()): GrantDocument {
   const status = doc.status ?? extraction.status;
   const openingDate = doc.openingDate ?? parseQldDate(extraction.openingDate);
-  const closingDate = doc.closingDate ?? parseQldDate(extraction.closingDate);
+  const closingDate = doc.closingDate ?? parseQldClosingDate(extraction.closingDate);
   const merged: GrantDocument = {
     ...doc,
     status,
@@ -106,28 +108,16 @@ export interface PageOptions {
   /** Skip pages that fail instead of failing the whole run. */
   tolerant?: boolean;
   concurrency?: number;
+  signal?: AbortSignal;
 }
 
-export async function getHtml(url: string, fetcher: typeof fetch = fetch): Promise<string> {
+export async function getHtml(url: string, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<string> {
   const response = await fetcher(url, {
     headers: { 'user-agent': USER_AGENT, accept: 'text/html' },
-    signal: AbortSignal.timeout(30_000),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
   });
   if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
   return response.text();
-}
-
-/** Runs `task` over `items` with bounded concurrency, preserving order. */
-export async function mapLimit<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await task(items[i]);
-    }
-  }));
-  return results;
 }
 
 /** Extraction only enriches; a failure leaves the fields null rather than failing the sync. */
@@ -139,6 +129,7 @@ export async function enrich(doc: GrantDocument, opts: PageOptions): Promise<Gra
     if (extraction) return applyExtraction(doc, extraction, opts.now);
     log(`No verified fields extracted for ${doc.url}`);
   } catch (error) {
+    opts.signal?.throwIfAborted();
     log(`Field extraction failed for ${doc.url}: ${error instanceof Error ? error.message : error}`);
   }
   return doc;
@@ -155,9 +146,11 @@ export async function fetchPages(
   const log = opts.log ?? console.log;
   const results = await mapLimit(sources, opts.concurrency ?? 1, async (source) => {
     try {
-      const doc = parseCuratedPage(await getHtml(source.url, opts.fetcher), source, opts.idPrefix);
+      opts.signal?.throwIfAborted();
+      const doc = parseCuratedPage(await getHtml(source.url, opts.fetcher, opts.signal), source, opts.idPrefix);
       return await enrich(doc, opts);
     } catch (error) {
+      opts.signal?.throwIfAborted();
       if (!opts.tolerant) throw error;
       log(`Skipping ${source.url}: ${error instanceof Error ? error.message : error}`);
       return null;
@@ -165,7 +158,7 @@ export async function fetchPages(
   });
   const documents = results.filter((d): d is GrantDocument => d !== null);
   const failedIds = results.flatMap((doc, i) =>
-    doc === null ? [pageId(opts.idPrefix ?? 'cur', sources[i].url)] : []);
+    doc === null ? [pageId(opts.idPrefix ?? 'cur', sources[i]!.url)] : []);
   return { fetched: documents.length, documents, duplicatesRemoved: 0, failedIds };
 }
 

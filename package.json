@@ -14,6 +14,7 @@
     "prestart": "npm run clean && npm run build",
     "start": "func start",
     "test": "vitest run",
+    "test:demo": "npm --prefix demo/grants-finder-extension test",
     "typecheck": "tsc --noEmit",
     "preview": "tsx scripts/preview-grants.ts",
     "setup:search": "tsx scripts/setup-search.ts",
@@ -23,14 +24,14 @@
   },
   "dependencies": {
     "@azure/functions": "^4.16.5",
-    "@azure/identity": "^4.13.3",
+    "@azure/identity": "^4.14.1",
     "@azure/storage-blob": "^12.34.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.1",
+    "vitest": "^5.0.5",
     "yaml": "^2.9.1"
   }
 }

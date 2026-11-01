@@ -23,6 +23,9 @@ describe('agents/grants-agent.yaml', () => {
     }
     expect(agent.definition).toMatchObject({ kind: 'prompt', model: 'gpt-5.4-mini' });
     expect(agent.definition.instructions).toContain('knowledge_base_retrieve');
+    expect(agent.definition.instructions).toContain('isOpen is a sync-time snapshot');
+    expect(agent.definition.instructions).toContain('Unknown status is not Closed');
+    expect(agent.definition.instructions).toContain('SmartyGrants portals');
     expect(agent.definition.tools).toEqual([
       {
         type: 'mcp',

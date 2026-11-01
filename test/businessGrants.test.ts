@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fetchBusinessGrants, parseBusinessPage, type BusinessResult } from '../src/lib/businessClient.js';
-import { normalizeBusinessGrant, normalizeBusinessGrants } from '../src/lib/businessGrants.js';
+import { normalizeBusinessGrant, normalizeBusinessGrants, plain } from '../src/lib/businessGrants.js';
 
 const HTML = `<div class="search-connection" data-organizationId="departmentofindustryscienceenergyandresourcesproduxlo9oz8e" data-searchKey="public-key"></div>
   <div id="grantsInterface" data-cq="(@z95xtemplate==grant)"></div>`;
@@ -33,7 +33,7 @@ describe('business.gov.au grants', () => {
 
   it('pages through a complete snapshot using the site query and scope', async () => {
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
-      !init ? new Response(HTML) : Response.json({
+      !init?.body ? new Response(HTML) : Response.json({
         totalCount: 3,
         results: init.body && JSON.parse(String(init.body)).firstResult === 0
           ? [raw(), raw({ z95xid: '22222222222222222222222222222222' })]
@@ -42,16 +42,16 @@ describe('business.gov.au grants', () => {
     const snapshot = await fetchBusinessGrants(fetcher as typeof fetch);
     expect(snapshot.results).toHaveLength(3);
     expect(fetcher).toHaveBeenCalledTimes(3);
-    const request = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    const request = JSON.parse(String(fetcher.mock.calls[1]![1]?.body));
     expect(request.cq).toContain('@z95xlatestversion==1');
     expect(request.firstResult).toBe(0);
-    expect(JSON.parse(String(fetcher.mock.calls[2][1]?.body)).firstResult).toBe(2);
-    expect(fetcher.mock.calls[1][1]?.headers).toMatchObject({ Authorization: 'Bearer public-key' });
+    expect(JSON.parse(String(fetcher.mock.calls[2]![1]?.body)).firstResult).toBe(2);
+    expect(fetcher.mock.calls[1]![1]?.headers).toMatchObject({ Authorization: 'Bearer public-key' });
   });
 
   it('fails rather than soft-deleting records when the feed changes mid-pagination', async () => {
     const fetcher = vi.fn(async (_url: string | URL | Request, init?: RequestInit) =>
-      !init ? new Response(HTML) : Response.json({
+      !init?.body ? new Response(HTML) : Response.json({
         totalCount: JSON.parse(String(init.body)).firstResult ? 4 : 3,
         results: JSON.parse(String(init.body)).firstResult ? [raw()] : [raw(), raw()],
       }));
@@ -75,5 +75,9 @@ describe('business.gov.au grants', () => {
     expect(normalizeBusinessGrant(raw({ cgs: 'Closed' })).isOpen).toBe(false);
     expect(normalizeBusinessGrants([raw(), raw({ csearchcarddescription: 'x' })]).duplicatesRemoved).toBe(1);
     expect(() => normalizeBusinessGrant(raw({ curl: 'https://example.com/evil' }))).toThrow(/identity or URL/);
+  });
+
+  it('decodes malformed numeric entities without crashing a feed sync', () => {
+    expect(plain('Help &#99999999; &#xD800; &amp; &#65;')).toBe('Help \uFFFD \uFFFD & A');
   });
 });
