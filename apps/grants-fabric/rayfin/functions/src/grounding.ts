@@ -1,4 +1,5 @@
 import type { GrantRecord } from '../../data/GrantRecord.js';
+import { catalogueFields, evidenceFields, evidenceText } from './grantFields.js';
 
 export interface ChatSource {
   id: string;
@@ -27,7 +28,8 @@ export function retrieveGrants(grants: GrantRecord[], question: string, selected
     .filter((grant) => !selectedId || grant.id === selectedId)
     .map((grant) => {
       const title = grant.title.toLowerCase();
-      const text = `${grant.summary} ${grant.eligibility} ${grant.categories}`.toLowerCase();
+      const text = catalogueFields.map(([key]) => evidenceFields.some((field) => field === key)
+        ? evidenceText(grant, key as typeof evidenceFields[number]) : String(grant[key] ?? '')).join(' ').toLowerCase();
       const score = terms.reduce((total, term) => total + (title.includes(term) ? 4 : text.includes(term) ? 1 : 0), 0);
       return { grant, score };
     })
@@ -54,13 +56,30 @@ Do not claim this is an exhaustive search. Keep the answer under 3000 characters
       content: `Evidence (a bounded keyword retrieval, not a complete catalogue):\n${JSON.stringify(grants.map((grant, index) => ({
         citation: index + 1,
         title: grant.title,
-        summary: grant.summary.slice(0, 1400),
-        eligibility: grant.eligibility.slice(0, 1400),
-        howToApply: grant.howToApply.slice(0, 800),
+        summary: evidenceText(grant, 'summary').slice(0, 1400),
+        eligibility: evidenceText(grant, 'eligibility').slice(0, 1400),
+        howToApply: evidenceText(grant, 'howToApply').slice(0, 800),
         status: grant.status,
         openingDate: grant.openingDate,
         closingDate: grant.closingDate,
         amount: grant.amount,
+        amountText: grant.amountText?.slice(0, 500),
+        programName: grant.programName,
+        roundName: grant.roundName,
+        openingDateText: grant.openingDateText,
+        closingDateText: grant.closingDateText,
+        financialYearBudget: grant.financialYearBudget,
+        additionalBudgetInformation: grant.additionalBudgetInformation?.slice(0, 500),
+        assistanceType: grant.assistanceType,
+        applicantTypes: grant.applicantTypes,
+        clientGroups: grant.clientGroups,
+        fundingTypes: grant.fundingTypes,
+        businessActivities: grant.businessActivities,
+        deliveredBy: grant.deliveredBy,
+        issuingAgency: grant.issuingAgency,
+        successNotification: grant.successNotification?.slice(0, 500),
+        source: grant.source,
+        sourceUpdatedAt: grant.sourceUpdatedAt,
       })))}\n\nQuestion: ${question}`,
     },
   ];

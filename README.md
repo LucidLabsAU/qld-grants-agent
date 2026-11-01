@@ -57,10 +57,12 @@ The broader vision is the same grounded agent wherever someone needs help: embed
 | **Grants data and search** | Weekly feed/page/portal ingestion, deduplication, automatic revision history, change tracking, facets, keyword/vector/hybrid search and semantic ranking. | [Querying](#querying) |
 | **Grounded grants agent** | A YAML-defined Foundry prompt agent connected to a FoundryIQ knowledge base through MCP, with Application Insights monitoring. | [Grants agent](#grants-agent) |
 | **Experience prototype** | A separate Edge/Chrome extension and local authentication bridge demonstrating the journey on the existing public site. It is not deployed by the infrastructure template. | [Demo setup](demo/grants-finder-extension/README.md) |
-| **GrantFin workbench** | A separate QGDS-styled Rayfin app with an introductory Home page, viewport-fitted workspace, reviewer tables, archived grant evidence, immutable human reviews, and Copilot SDK chat with persisted citations. | [Fabric app](apps/grants-fabric/README.md) |
+| **GrantFin workbench** | A separate QGDS-styled Rayfin app with full normalized grant fields, source/program data-quality matrices, reviewer tables, archived evidence, immutable human reviews, and Copilot SDK chat with persisted citations. | [Fabric app](apps/grants-fabric/README.md) |
 | **Deployment as code** | Bicep infrastructure, JSON search definitions and scripts to publish the search objects and agent. | [Deploy](#deploy) |
 
 The prototype stays separate from the backend: it calls the published agent through the Foundry Responses API and does not change the ingestion, index or agent deployment. You can use the backend entirely without the extension.
+
+GrantFin also has an authenticated [Why and How we built this](https://deft-wheat-ac5929f368-australiaeast.webapp.fabricapps.net/why-and-how) page with creator/upstream attribution and the two technical paths explained, available in the shared workspace navigation. Microsoft employee-wide access is not enabled; [Fabric access requirements](apps/grants-fabric/README.md#microsoft-employee-access) still apply.
 
 ---
 
@@ -290,7 +292,7 @@ Provisioning requires subscription resource-write and role-assignment permission
 
 The dedicated model has a public endpoint so Fabric can reach it, but API keys are disabled and inference requires Entra authentication. Existing model firewalls are untouched. To reuse a reachable model instead, set `FABRIC_DEPLOY_AI=false`, `FABRIC_AI_ENDPOINT` and `FABRIC_AI_DEPLOYMENT`. In hybrid mode, an omitted existing endpoint/deployment uses the original Foundry chat model, unless `deployFabricAi` is enabled.
 
-Fabric mode uses manually imported normalized JSON and a caller-private catalogue, not the Azure weekly sync or FoundryIQ search pipeline. See the [app README](apps/grants-fabric/README.md) for imports, SDK packaging, validation, and prototype limits.
+Fabric mode uses manually imported normalized JSON and a caller-private catalogue, not the Azure weekly sync or FoundryIQ search pipeline. `npm run preview -- --qld-open-data --out grants.preview.json` explicitly uses the public Queensland current-funding datasets instead of the key-protected Grants Finder API, alongside all other implemented feeds. It retains dataset attribution, free-text amount/date/budget guidance and stable service IDs. It does not add GrantConnect or other unimplemented research leads. See the [app README](apps/grants-fabric/README.md) for archival-safe imports, full field storage, data-quality views, SDK packaging, validation, and prototype limits.
 
 ### Configuration
 

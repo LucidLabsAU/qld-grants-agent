@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { askGrants, getChat, getGrants, getGrantVersions, getReviews, importGrants, parseGrantImport, saveReview } from '@/services/grants';
+import { evidenceText } from '../../rayfin/functions/src/grantFields';
 
 const mocks = vi.hoisted(() => {
   const page = vi.fn();
@@ -53,7 +54,7 @@ describe('grant import and persistence', () => {
 
   it('rejects duplicate or oversized records before writing anything', async () => {
     await expect(importGrants([raw, raw])).rejects.toThrow('Duplicate');
-    await expect(importGrants([raw, { ...raw, id: 'qld-2', eligibility: 'x'.repeat(4001) }])).rejects.toThrow('Record 2');
+    await expect(importGrants([raw, { ...raw, id: 'qld-2', eligibility: 'x'.repeat(8001) }])).rejects.toThrow('Record 2');
     expect(mocks.create).not.toHaveBeenCalled();
   });
 
@@ -90,7 +91,7 @@ describe('grant import and persistence', () => {
 
   it('reuses an already archived snapshot after a failed update', async () => {
     mocks.page.mockResolvedValue({ items: [existing], hasNextPage: false });
-    mocks.archived.mockResolvedValue([{ id: 'snapshot-1' }]);
+    mocks.archived.mockResolvedValue([{ ...existing, id: 'snapshot-1' }]);
     await importGrants([{ ...raw, contentHash: 'version-2' }]);
     expect(mocks.archive).not.toHaveBeenCalled();
     expect(mocks.update).toHaveBeenCalled();
@@ -129,6 +130,26 @@ describe('grant import and persistence', () => {
   it('reports partial import writes without claiming success', async () => {
     mocks.create.mockResolvedValueOnce(existing).mockRejectedValueOnce(new Error('Storage unavailable'));
     await expect(importGrants([raw, { ...raw, id: 'qld-2' }])).rejects.toThrow('1/2 records');
+  });
+
+  it('preserves full page evidence, lineage and qualitative fields, including schema backfills with the same upstream hash', async () => {
+    const input = {
+      ...raw, eligibility: 'x'.repeat(8000), programName: 'Community program', roundName: 'Round 1',
+      sourceIds: ['qld-1', 'qld-2'], applicantTypes: ['Non-profit'], fundingTypes: ['Grant'], isOpen: false,
+      amountText: 'Amounts vary', closingDateText: 'Until funds are exhausted',
+      sourceDatasetUrl: 'https://www.data.qld.gov.au/dataset/example',
+    };
+    const parsed = parseGrantImport([input])[0];
+    expect(evidenceText({ ...existing, ...parsed }, 'eligibility')).toBe(input.eligibility);
+    expect(parsed).toMatchObject({ eligibilityOverflow: 'x'.repeat(4000), sourceIds: 'qld-1|qld-2', isOpen: false });
+    mocks.page.mockResolvedValue({ items: [existing], hasNextPage: false });
+    await importGrants([input]);
+    expect(mocks.archive).toHaveBeenCalledWith(expect.objectContaining({ contentHash: existing.contentHash }));
+    expect(mocks.update).toHaveBeenCalledWith({ id: existing.id }, expect.objectContaining({ ...parsed, importedAt: expect.any(Date) }));
+    mocks.archived.mockResolvedValue([{ ...existing, id: 'original-snapshot' }]);
+    mocks.page.mockResolvedValue({ items: [{ ...existing, ...parsed }], hasNextPage: false });
+    await importGrants([{ ...input, amountText: 'Check co-funding terms' }]);
+    expect(mocks.archive).toHaveBeenLastCalledWith(expect.objectContaining({ amountText: 'Amounts vary', eligibilityOverflow: parsed.eligibilityOverflow }));
   });
 
   it('saves a new review against the current grant hash and owner', async () => {

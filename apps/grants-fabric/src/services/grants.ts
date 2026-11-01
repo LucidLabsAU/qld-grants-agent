@@ -3,14 +3,10 @@ import type { GrantReview } from '../../rayfin/data/GrantReview';
 import type { ChatTurn } from '../../rayfin/data/ChatTurn';
 import type { GrantVersion } from '../../rayfin/data/GrantVersion';
 import { getRayfinClient } from './rayfinClient';
+import { grantFields } from '../../rayfin/functions/src/grantFields';
 
-export type GrantInput = Omit<GrantRecord, 'id' | 'user_id' | 'active'>;
+export type GrantInput = Omit<GrantRecord, 'id' | 'user_id' | 'active' | 'importedAt'>;
 export type { GrantRecord, GrantReview, ChatTurn, GrantVersion };
-
-const grantFields = [
-  'user_id', 'sourceId', 'source', 'title', 'summary', 'eligibility', 'howToApply',
-  'url', 'status', 'openingDate', 'closingDate', 'amount', 'jurisdictions', 'categories', 'contentHash', 'active',
-] as const satisfies readonly (keyof GrantRecord)[];
 
 function text(record: Record<string, unknown>, key: string, max: number, required = false): string {
   const value = record[key];
@@ -24,8 +20,9 @@ function text(record: Record<string, unknown>, key: string, max: number, require
   return value;
 }
 
-function list(record: Record<string, unknown>, key: string, max: number): string {
+function list(record: Record<string, unknown>, key: string, max: number, optional = false): string {
   const value = record[key];
+  if (optional && value == null) return '';
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === 'string' && !entry.includes('|'))) {
     throw new Error(`${key} must be an array of strings without pipe characters.`);
   }
@@ -54,13 +51,43 @@ export function parseGrantImport(input: unknown): GrantInput[] {
       if (record.amount != null && (typeof record.amount !== 'number' || !Number.isFinite(record.amount) || record.amount < 0)) {
         throw new Error('Amount must be a non-negative number or null.');
       }
+      if (record.isOpen != null && typeof record.isOpen !== 'boolean') throw new Error('isOpen must be a boolean or null.');
+      const longText = Object.fromEntries(['summary', 'eligibility', 'howToApply'].flatMap((key) => {
+        const value = text(record, key, 8000);
+        return [[key, value.slice(0, 4000)], [`${key}Overflow`, value.slice(4000)]];
+      }));
+      const dated = (key: string) => {
+        const value = text(record, key, 100);
+        if (value && !Number.isFinite(Date.parse(value))) throw new Error(`Invalid ${key}.`);
+        return value;
+      };
+      const link = (key: string) => {
+        const value = text(record, key, 2000);
+        if (value && !['https:', 'http:'].includes(new URL(value).protocol)) throw new Error(`Invalid ${key} URL.`);
+        return value;
+      };
       return {
         sourceId, source: text(record, 'source', 100, true), title: text(record, 'title', 500, true),
-        summary: text(record, 'summary', 4000), eligibility: text(record, 'eligibility', 4000),
-        howToApply: text(record, 'howToApply', 4000), url, status: text(record, 'status', 100),
+        summary: longText.summary, summaryOverflow: longText.summaryOverflow,
+        eligibility: longText.eligibility, eligibilityOverflow: longText.eligibilityOverflow,
+        howToApply: longText.howToApply, howToApplyOverflow: longText.howToApplyOverflow,
+        url, status: text(record, 'status', 100),
         openingDate, closingDate, amount: record.amount == null ? '' : String(record.amount),
         jurisdictions: list(record, 'jurisdictions', 1000), categories: list(record, 'categories', 2000),
         contentHash: text(record, 'contentHash', 200, true),
+        programName: text(record, 'programName', 500), roundName: text(record, 'roundName', 500),
+        successNotification: text(record, 'successNotification', 4000),
+        deliveredBy: text(record, 'deliveredBy', 1000), issuingAgency: text(record, 'issuingAgency', 1000),
+        financialYearBudget: text(record, 'financialYearBudget', 1000), assistanceType: text(record, 'assistanceType', 1000),
+        applicantTypes: list(record, 'applicantTypes', 2000, true), clientGroups: list(record, 'clientGroups', 2000, true),
+        fundingTypes: list(record, 'fundingTypes', 2000, true), businessActivities: list(record, 'businessActivities', 2000, true),
+        tagIds: list(record, 'tagIds', 2000, true),
+        sourceIds: record.sourceIds == null ? sourceId : list(record, 'sourceIds', 2000),
+        isOpen: record.isOpen == null ? undefined : record.isOpen,
+        lastChangedAt: dated('lastChangedAt'), sourceUpdatedAt: dated('sourceUpdatedAt'),
+        sourceDatasetUrl: link('sourceDatasetUrl'), licenseUrl: link('licenseUrl'),
+        openingDateText: text(record, 'openingDateText', 1000), closingDateText: text(record, 'closingDateText', 1000),
+        amountText: text(record, 'amountText', 2000), additionalBudgetInformation: text(record, 'additionalBudgetInformation', 2000),
       };
     } catch (error) {
       throw new Error(`Record ${index + 1}: ${error instanceof Error ? error.message : 'Invalid grant.'}`);
@@ -68,11 +95,11 @@ export function parseGrantImport(input: unknown): GrantInput[] {
   });
 }
 
-export async function getGrants(): Promise<GrantRecord[]> {
+export async function getGrants(client = getRayfinClient()): Promise<GrantRecord[]> {
   const rows: GrantRecord[] = [];
   let cursor: string | undefined;
   do {
-    const query = getRayfinClient().data.GrantRecord.select(['id', ...grantFields]).orderBy({ id: 'asc' }).first(200);
+    const query = client.data.GrantRecord.select(['id', 'user_id', ...grantFields]).orderBy({ id: 'asc' }).first(200);
     const page = await (cursor ? query.after(cursor) : query).executePaginated();
     rows.push(...page.items);
     if (page.hasNextPage && !page.endCursor) throw new Error('Grant pagination did not return a continuation cursor.');
@@ -81,30 +108,32 @@ export async function getGrants(): Promise<GrantRecord[]> {
   return rows;
 }
 
-export async function importGrants(input: unknown): Promise<number> {
+export async function importGrants(input: unknown, client = getRayfinClient()): Promise<number> {
   const records = parseGrantImport(input);
-  const client = getRayfinClient();
   const session = client.auth.getSession();
   if (!session.isAuthenticated || !session.user) throw new Error('Sign in before importing grants.');
-  const existing = new Map((await getGrants()).map((grant) => [grant.sourceId, grant]));
+  const existing = new Map((await getGrants(client)).map((grant) => [grant.sourceId, grant]));
   let completed = 0;
   try {
     for (const record of records) {
       const previous = existing.get(record.sourceId);
       if (previous) {
-        if (previous.contentHash !== record.contentHash || !previous.active) {
+        if (!previous.active || Object.entries(record).some(([key, value]) =>
+          String(previous[key as keyof GrantInput] ?? '') !== String(value ?? ''))) {
           // Preserve evidence before overwriting; a failed archive must block the update.
-          const archived = await client.data.GrantVersion.select(['id'])
+          const archived = await client.data.GrantVersion.select(['id', ...grantFields])
             .where({ grantId: { eq: previous.id }, contentHash: { eq: previous.contentHash }, active: { eq: previous.active } })
-            .first(1).execute();
-          if (!archived.length) {
+            .first(100).execute();
+          if (!archived.some((snapshot) => grantFields.every((key) => key === 'importedAt'
+            ? (snapshot.importedAt ? new Date(snapshot.importedAt).getTime() : null) === (previous.importedAt ? new Date(previous.importedAt).getTime() : null)
+            : String(snapshot[key] ?? '') === String(previous[key] ?? '')))) {
             const { id: grantId, ...snapshot } = previous;
             await client.data.GrantVersion.create({ ...snapshot, grantId, archivedAt: new Date() });
           }
-          await client.data.GrantRecord.update({ id: previous.id }, { ...record, active: true });
+          await client.data.GrantRecord.update({ id: previous.id }, { ...record, active: true, importedAt: new Date() });
         }
       } else {
-        await client.data.GrantRecord.create({ ...record, user_id: session.user.id, active: true });
+        await client.data.GrantRecord.create({ ...record, user_id: session.user.id, active: true, importedAt: new Date() });
       }
       completed++;
     }
@@ -118,7 +147,7 @@ export async function getGrantVersions(): Promise<GrantVersion[]> {
   const rows: GrantVersion[] = [];
   let cursor: string | undefined;
   do {
-    const query = getRayfinClient().data.GrantVersion.select(['id', 'grantId', 'archivedAt', ...grantFields])
+    const query = getRayfinClient().data.GrantVersion.select(['id', 'user_id', 'grantId', 'archivedAt', ...grantFields])
       .orderBy({ archivedAt: 'desc', id: 'asc' }).first(200);
     const page = await (cursor ? query.after(cursor) : query).executePaginated();
     rows.push(...page.items);

@@ -49,7 +49,7 @@ function parseAmount(value: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function normalizeUrl(value: string | null): string | null {
+export function normalizeUrl(value: string | null): string | null {
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
   if (/^www\./i.test(value)) return `https://${value}`;
@@ -57,6 +57,11 @@ function normalizeUrl(value: string | null): string | null {
 }
 
 const uniqueSorted = (values: Iterable<string>) => [...new Set(values)].sort((a, b) => a.localeCompare(b));
+
+export function normalizeProgramPart(value: string | null): string | null {
+  const name = value?.trim();
+  return name && !/^[-–—\s]+$/.test(name) ? name : null;
+}
 
 /** A grant is open when flagged "Open" and its closing date (if any) hasn't passed in QLD time. */
 export function computeIsOpen(status: string | null, closingDate: string | null, now: Date): boolean {
@@ -68,7 +73,7 @@ export function computeIsOpen(status: string | null, closingDate: string | null,
 /** Maps a raw service record + dimension lookup into a flat, index-ready document (hash fields left empty). */
 export function normalizeGrant(raw: RawService, lookup: DimensionLookup, now: Date = new Date()): GrantDocument {
   const name = clean(raw.name) ?? `Grant ${raw.id}`;
-  const subProgram = detail(raw, F.subProgram);
+  const subProgram = normalizeProgramPart(detail(raw, F.subProgram));
   const hasDistinctSubProgram = !!subProgram && subProgram.toLowerCase() !== name.toLowerCase();
 
   const buckets: Record<DimensionKey, string[]> = {

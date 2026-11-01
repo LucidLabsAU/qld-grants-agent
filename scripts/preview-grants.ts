@@ -10,14 +10,20 @@ import { normalizeBusinessGrants } from '../src/lib/businessGrants.js';
 import { fetchCuratedGrants } from '../src/lib/curatedGrants.js';
 import { fetchBusinessQldPages, urlKey } from '../src/lib/businessQldDiscovery.js';
 import { fetchSmartyGrants } from '../src/lib/smartyGrants.js';
+import { fetchQldFundingData } from '../src/lib/qldFundingData.js';
 import { argValue, loadScriptEnv } from './env.js';
 
 const env = loadScriptEnv();
-const snapshot = await fetchSnapshot({
+const publicFundingData = process.argv.includes('--qld-open-data');
+const publicQld = publicFundingData ? await fetchQldFundingData() : undefined;
+const snapshot = !publicFundingData ? await fetchSnapshot({
   baseUrl: env.QLD_API_BASE_URL ?? 'https://api.jus-checklist.services.qld.gov.au/v1/api/legacy/resources/grants',
   ...(env.QLD_API_KEY && { apiKey: env.QLD_API_KEY }),
-});
-const qld = buildGrantDocuments(snapshot);
+}) : undefined;
+const qld = snapshot ? buildGrantDocuments(snapshot) : {
+  documents: publicQld!.documents, fetched: publicQld!.documents.length, duplicatesRemoved: 0,
+};
+if (publicQld) console.log(`Using ${publicQld.datasets} public Queensland funding datasets instead of the Grants Finder API.`);
 const business = normalizeBusinessGrants((await fetchBusinessGrants()).results);
 const curated = await fetchCuratedGrants();
 const known = new Set([...qld.documents, ...business.documents, ...curated.documents].map((d) => d.url).filter((u): u is string => !!u).map(urlKey));

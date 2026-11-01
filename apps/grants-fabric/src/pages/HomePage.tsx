@@ -1,27 +1,39 @@
 import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import {
   askGrants, getChat, getGrants, getReviews, importGrants, saveReview,
   type ChatTurn, type GrantRecord, type GrantReview,
 } from '@/services/grants';
 import { isOpenNow, type ChatSource } from '../../rayfin/functions/src/grounding';
-import { BuiltBy } from '@/components/BuiltBy';
+import { AppBrand, AppFooter } from '@/components/AppChrome';
 import { ReviewerTable } from '@/components/ReviewerTable';
 import { WelcomePage } from '@/pages/WelcomePage';
+import { WhyAndHowPage } from '@/pages/WhyAndHowPage';
+import { DataQuality } from '@/components/DataQuality';
+import { catalogueFields, evidenceFields, evidenceText } from '../../rayfin/functions/src/grantFields';
 
 const views = [
   { id: 'home', label: 'Home' }, { id: 'workbench', label: 'Browse and review' }, { id: 'table', label: 'Reviewer table' },
+  { id: 'quality', label: 'Data quality' },
+  { id: 'story', label: 'Why and How' },
 ] as const;
 type WorkspaceView = typeof views[number]['id'];
 const copyNotice = 'Answer copied to clipboard.';
 
 export function HomePage() {
   const { signOut, user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const storyOpen = location.pathname === '/why-and-how';
+  const [workspaceRequested, setWorkspaceRequested] = useState(!storyOpen);
+  const shouldLoadWorkspace = workspaceRequested || !storyOpen;
   const [grants, setGrants] = useState<GrantRecord[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [reviews, setReviews] = useState<GrantReview[]>([]);
   const [chat, setChat] = useState<ChatTurn[]>([]);
   const [search, setSearch] = useState('');
+  const [catalogueSource, setCatalogueSource] = useState('business.gov.au');
   const [openOnly, setOpenOnly] = useState(true);
   const [decision, setDecision] = useState<GrantReview['decision']>('researching');
   const [notes, setNotes] = useState('');
@@ -31,21 +43,26 @@ export function HomePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<WorkspaceView>('home');
+  const [tab, setTab] = useState<Exclude<WorkspaceView, 'story'>>('home');
+  const currentView = storyOpen ? 'story' : tab;
   const [refreshKey, setRefreshKey] = useState(0);
   const selected = grants.find((grant) => grant.id === selectedId);
+  const catalogueSources = [...new Set(['business.gov.au', ...grants.map((grant) => grant.source)])].sort();
   const visible = grants.filter((grant) => grant.active && grant.jurisdictions.split('|').includes('Queensland')
+    && (!catalogueSource || grant.source === catalogueSource)
     && (!openOnly || isOpenNow(grant))
-    && `${grant.title} ${grant.summary} ${grant.categories}`.toLowerCase().includes(search.toLowerCase()));
+    && catalogueFields.map(([key]) => evidenceFields.some((field) => field === key)
+      ? evidenceText(grant, key as typeof evidenceFields[number]) : String(grant[key] ?? '')).join(' ').toLowerCase().includes(search.toLowerCase()));
 
   useEffect(() => {
+    if (!shouldLoadWorkspace) return;
     let cancelled = false;
     Promise.all([getGrants(), getChat()])
       .then(([records, turns]) => { if (!cancelled) { setGrants(records); setChat(turns); } })
       .catch((err: unknown) => { if (!cancelled) setError(message(err)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [shouldLoadWorkspace]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,12 +93,27 @@ export function HomePage() {
   }
 
   function openView(view: WorkspaceView) {
-    setTab(view);
+    if (view === 'story') navigate('/why-and-how');
+    else {
+      setTab(view);
+      setWorkspaceRequested(true);
+      if (storyOpen) navigate('/');
+    }
     document.getElementById(`${view}-tab`)?.focus();
   }
 
+  function openGrant(id: string) {
+    const grant = grants.find((record) => record.id === id);
+    setSelectedId(id);
+    if (grant) {
+      setCatalogueSource(grant.source);
+      if (!isOpenNow(grant)) setOpenOnly(false);
+    }
+    openView('workbench');
+  }
+
   return (
-    <div className="workbench">
+    <div className={`workbench${storyOpen ? ' story-page' : ''}`}>
       <a className="skip-link" href="#workspace">Skip to main content</a>
       <div className="utility-bar">
         <div className="site-width utility-inner">
@@ -91,7 +123,7 @@ export function HomePage() {
       </div>
       <header className="app-header">
         <div className="site-width masthead">
-          <div className="app-brand"><div><h1><img className="brand-logo" src="/brands/grantfin.png" alt="GrantFin" width="240" height="76" /></h1><p>Find funding. Keep the evidence.</p></div></div>
+          <AppBrand heading={storyOpen ? 'div' : 'h1'} />
           <label className="import-button">Import grants
             <input type="file" accept=".json,application/json" disabled={!!busy} onChange={(event) => {
               const file = event.target.files?.[0];
@@ -110,8 +142,8 @@ export function HomePage() {
       <div className="workspace-nav">
         <div className="site-width nav-inner">
           <div className="workspace-tabs" role="tablist" aria-label="Workspace view">
-            {views.map((view, index) => <button key={view.id} id={`${view.id}-tab`} role="tab" aria-selected={tab === view.id} aria-controls={`${view.id}-view`} tabIndex={tab === view.id ? 0 : -1}
-              onClick={() => setTab(view.id)} onKeyDown={(event) => {
+            {views.map((view, index) => <button key={view.id} id={`${view.id}-tab`} role="tab" aria-selected={currentView === view.id} aria-controls={`${view.id}-view`} tabIndex={currentView === view.id ? 0 : -1}
+              onClick={() => openView(view.id)} onKeyDown={(event) => {
                 if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
                 event.preventDefault();
                 const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
@@ -121,27 +153,39 @@ export function HomePage() {
               {view.id === 'home' && <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 10 12 3l9 7v11h-6v-7H9v7H3Z" /></svg>}{view.label}
             </button>)}
           </div>
-          <div className="metrics" aria-label="Catalogue summary"><span><strong>{grants.filter((grant) => grant.active).length}</strong> grants</span>
-            <span><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong> open now</span></div>
+          {shouldLoadWorkspace && <div className="metrics" aria-label="Catalogue summary"><span><strong>{grants.filter((grant) => grant.active).length}</strong> grants</span>
+            <span><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong> open now</span></div>}
         </div>
       </div>
       <main className="workspace site-width" id="workspace" tabIndex={-1}>
         <nav className="workspace-breadcrumbs" aria-label="Breadcrumb"><ol>
           <li><a href="#home-view" onClick={(event) => { event.preventDefault(); openView('home'); }}>Queensland grants</a></li>
-          <li aria-current="page">{tab === 'home' ? 'About GrantFin' : tab === 'workbench' ? 'Browse and review' : 'Reviewer table'}</li>
+          <li aria-current="page">{currentView === 'home' ? 'About GrantFin' : views.find((view) => view.id === currentView)?.label}</li>
         </ol></nav>
         {error && <div role="alert" className="error">{error}</div>}
         {notice && <div role="status" className="notice">{notice}</div>}
         {busy && <p role="status">{busy}…</p>}
-        <div id="home-view" role="tabpanel" aria-labelledby="home-tab" hidden={tab !== 'home'} className="home-view">
+        <div id="story-view" role="tabpanel" aria-labelledby="story-tab" hidden={currentView !== 'story'}>
+          {storyOpen && <WhyAndHowPage />}
+        </div>
+        <div id="home-view" role="tabpanel" aria-labelledby="home-tab" hidden={currentView !== 'home'} className="home-view">
           <WelcomePage onOpen={openView} />
         </div>
-        <div id="table-view" role="tabpanel" aria-labelledby="table-tab" hidden={tab !== 'table'} className="table-view">
-          {tab === 'table' && <ReviewerTable grants={grants} refreshKey={refreshKey} onSelect={(id) => { setSelectedId(id); openView('workbench'); }} />}
+        <div id="table-view" role="tabpanel" aria-labelledby="table-tab" hidden={currentView !== 'table'} className="table-view">
+          {currentView === 'table' && <ReviewerTable grants={grants} refreshKey={refreshKey} onSelect={openGrant} />}
         </div>
-        <div id="workbench-view" role="tabpanel" aria-labelledby="workbench-tab" hidden={tab !== 'workbench'} className="columns">
+        <div id="quality-view" role="tabpanel" aria-labelledby="quality-tab" hidden={currentView !== 'quality'} className="table-view">
+          {currentView === 'quality' && (loading ? <p role="status">Loading catalogue data quality…</p> : !error || grants.length
+            ? <DataQuality grants={grants} onSelect={openGrant} /> : null)}
+        </div>
+        <div id="workbench-view" role="tabpanel" aria-labelledby="workbench-tab" hidden={currentView !== 'workbench'} className="columns">
           <section className="panel catalogue">
             <div className="panel-heading"><h2>Grant catalogue</h2><span>{visible.length} matching</span></div>
+            <label>Catalogue source<select className="form-select" value={catalogueSource} onChange={(event) => setCatalogueSource(event.target.value)}>
+              <option value="">All sources</option>{catalogueSources.map((source) => <option key={source} value={source}>{source}</option>)}
+            </select></label>
+            <p className="muted">This page defaults to business.gov.au, the original developer's ingestion source.
+              Select All sources to include the expanded catalogue. These are manually imported snapshots, not live web results.</p>
             <label>Search grants<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Innovation, community, export…" /></label>
             <div className="form-check check"><input className="form-check-input" id="open-now-only" type="checkbox" checked={openOnly} onChange={(event) => setOpenOnly(event.target.checked)} /><label className="form-check-label" htmlFor="open-now-only">Open now only</label></div>
             <p className="muted">Queensland jurisdiction. Opening and closing dates checked now, not cached isOpen.</p>
@@ -159,9 +203,17 @@ export function HomePage() {
             {!selected ? <p className="empty">Select a grant to read its evidence and record a review.</p> : <>
               <h3>{selected.title}</h3>
               {selected.url && <a href={selected.url} target="_blank" rel="noreferrer">Official source ↗</a>}
-              <p className="prose">{selected.summary || 'No summary supplied.'}</p>
-              <details><summary>Eligibility evidence</summary><p className="prose">{selected.eligibility || 'Not supplied. Check the official source.'}</p></details>
-              <details><summary>How to apply</summary><p className="prose">{selected.howToApply || 'Not supplied. Check the official source.'}</p></details>
+              <p className="prose">{evidenceText(selected, 'summary') || 'No summary supplied.'}</p>
+              <details><summary>Eligibility evidence</summary><p className="prose">{evidenceText(selected, 'eligibility') || 'Not supplied. Check the official source.'}</p></details>
+              <details><summary>How to apply</summary><p className="prose">{evidenceText(selected, 'howToApply') || 'Not supplied. Check the official source.'}</p></details>
+              <details><summary>Program, funding and source details</summary><dl>
+                {catalogueFields.filter(([key]) => !['title', 'summary', 'eligibility', 'howToApply'].includes(key)).map(([key, label]) => {
+                  const value = selected[key];
+                  return <div key={key}><dt>{label}</dt><dd className="prose">{typeof value === 'boolean' ? value ? 'Yes' : 'No'
+                    : String(value || 'Not supplied').split('|').join(', ')}</dd></div>;
+                })}
+                <div><dt>Imported at</dt><dd>{selected.importedAt ? new Date(selected.importedAt).toLocaleString('en-AU') : 'Not recorded in the original import'}</dd></div>
+              </dl></details>
               <h3>Review history</h3>
               {!reviews.length && <p className="muted">No reviews yet. Decisions are research notes, not eligibility verdicts.</p>}
               {reviews.map((review) => <article className="history" key={review.id}>
@@ -221,7 +273,7 @@ export function HomePage() {
           </section>
         </div>
       </main>
-      <footer className="app-footer"><span>Independent prototype · Not an official government service. Confirm details with the issuing agency.</span><BuiltBy /></footer>
+      <AppFooter />
     </div>
   );
 }

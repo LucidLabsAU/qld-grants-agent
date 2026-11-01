@@ -6,6 +6,11 @@ import {
 
 import type { GrantsAppSchema } from '../../rayfin/data/schema';
 import type { AppFunctionsSchema } from '../../rayfin/functions/src/types';
+import browserProcess from 'process';
+import { enableLosslessText } from '../../rayfin/functions/src/grantFields';
+
+if (typeof globalThis.process === 'undefined') globalThis.process = browserProcess;
+enableLosslessText(globalThis.process.env);
 
 export interface RayfinClientConfig {
   baseUrl: string;

@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '@/pages/HomePage';
 import type { ChatTurn, GrantRecord, GrantReview, GrantVersion } from '@/services/grants';
@@ -6,13 +8,16 @@ import type { ChatTurn, GrantRecord, GrantReview, GrantVersion } from '@/service
 const mocks = vi.hoisted(() => ({
   getGrants: vi.fn(), getChat: vi.fn(), getReviews: vi.fn(), getGrantVersions: vi.fn(), saveReview: vi.fn(), clipboard: vi.fn(),
 }));
+function render(ui: ReactNode) {
+  return renderComponent(<MemoryRouter>{ui}</MemoryRouter>);
+}
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ signOut: vi.fn(), user: { email: 'reviewer@example.test' } }) }));
 vi.mock('@/services/grants', () => ({
   ...mocks, askGrants: vi.fn(), importGrants: vi.fn(),
 }));
 
 const grant: GrantRecord = {
-  id: 'grant-1', user_id: 'owner', sourceId: 'qld-1', source: 'qld',
+  id: 'grant-1', user_id: 'owner', sourceId: 'qld-1', source: 'business.gov.au',
   title: 'Community grant', summary: 'Current summary', eligibility: 'Current evidence',
   howToApply: 'Apply online', url: 'https://www.qld.gov.au/grants', status: 'Closed',
   openingDate: '', closingDate: '2020-01-01', amount: '0', jurisdictions: 'Queensland',
@@ -43,6 +48,18 @@ function renderWorkbench() {
 }
 
 describe('reviewer workspace', () => {
+  it('starts with the original ingestion source but lets users include the expanded catalogue', async () => {
+    mocks.getGrants.mockResolvedValue([grant, { ...grant, id: 'expanded', title: 'Expanded funding', source: 'Queensland Government open funding data' }]);
+    renderWorkbench();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open now only' }));
+    expect(await screen.findByRole('button', { name: /Community grant/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('Catalogue source')).toHaveValue('business.gov.au');
+    expect(screen.queryByRole('button', { name: /Expanded funding/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/This page defaults to business.gov.au/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Catalogue source'), { target: { value: '' } });
+    expect(screen.getByRole('button', { name: /Expanded funding/ })).toBeInTheDocument();
+  });
+
   it('opens on GrantFin Home and explains the app with actions into its working views', async () => {
     render(<HomePage />);
     expect(screen.getByRole('heading', { name: 'GrantFin' })).toBeInTheDocument();
@@ -59,9 +76,13 @@ describe('reviewer workspace', () => {
     expect(await screen.findByText('Original evidence')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Reviewer table' })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Reviewer table' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Data quality' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Data quality' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Why and How' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Why and How' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Home' }), { key: 'End' });
-    expect(screen.getByRole('tab', { name: 'Reviewer table' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Why and How' })).toHaveFocus();
   });
 
   it('preserves the selected grant and unsaved drafts when returning Home and back', async () => {
@@ -136,6 +157,26 @@ describe('reviewer workspace', () => {
     expect(screen.getByText('Original evidence')).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Reviewer table' }), { key: 'Home' });
     expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
+  });
+
+  it('cleans dash-placeholder names in archived labels and sorting without rewriting snapshots', async () => {
+    const names = ['BreastScreen Qld Sunshine Coast', 'Glenbrook Residential Aged Care Service'];
+    const programs = names.map((title, index) => ({ ...grant, id: `grant-${index + 1}`, title, programName: title, roundName: '' }));
+    const history = programs.map((program, index) => ({
+      ...version, id: `version-${index + 1}`, grantId: program.id,
+      title: `- – ${program.title}`, programName: program.title, roundName: '-',
+    }));
+    mocks.getGrants.mockResolvedValue(programs);
+    mocks.getGrantVersions.mockResolvedValue(history);
+    render(<HomePage />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviewer table' }));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: names[0] })).toHaveLength(2));
+    expect(screen.getAllByRole('row').slice(1).map((row) => within(row).getByRole('button').textContent))
+      .toEqual([names[0], names[0], names[1], names[1]]);
+    for (const name of names) expect(screen.queryByRole('button', { name: `- – ${name}` })).not.toBeInTheDocument();
+    expect(history.map((snapshot) => snapshot.title)).toEqual(names.map((name) => `- – ${name}`));
+    fireEvent.click(screen.getAllByRole('button', { name: names[0] })[1]);
+    expect(screen.getByRole('heading', { name: names[0] })).toBeInTheDocument();
   });
 
   it('reports missing history instead of displaying a success-shaped empty result', async () => {

@@ -67,6 +67,14 @@ export interface GrantDocument {
   sourceIds: string[];
   contentHash: string;
   lastChangedAt: string | null;
+  /** Public-dataset provenance and qualitative values that must not be coerced into numbers or dates. */
+  sourceDatasetUrl?: string | null;
+  sourceUpdatedAt?: string | null;
+  licenseUrl?: string | null;
+  openingDateText?: string | null;
+  closingDateText?: string | null;
+  amountText?: string | null;
+  additionalBudgetInformation?: string | null;
 }
 
 /** Current staging representation; revision is bookkeeping, not part of normalized content hashes. */

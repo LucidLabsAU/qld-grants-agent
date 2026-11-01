@@ -4,9 +4,32 @@ A high-code Rayfin prototype for a private Queensland grants catalogue, human gr
 
 **[Deployed app](https://deft-wheat-ac5929f368-australiaeast.webapp.fabricapps.net)** (Fabric sign-in required). This is an independent proof of concept, not an official grants service or an eligibility decision.
 
+**[Why and How we built this](https://deft-wheat-ac5929f368-australiaeast.webapp.fabricapps.net/why-and-how)** is an authenticated page and a visible **Why and How** workspace view. It shares the signed-in header and all five navigation tabs, preserving workbench drafts and loaded data when switching views. It credits [keith-oak](https://github.com/keith-oak), the inspiration from [Olaf Wrieden](https://github.com/olafwrieden) and his [original repository](https://github.com/olafwrieden/qld-grants-agent), and links the [Lucid Labs fork](https://github.com/LucidLabsAU/qld-grants-agent). It distinguishes the Azure/Foundry pipeline from Fabric/Rayfin and explains evidence/privacy safeguards and limitations. A direct story visit does not load the private catalogue or chat until the visitor opens another workspace view.
+
+### Microsoft employee access
+
+Employee-wide access is **not enabled**. Rayfin's current direct Entra exchange requires a delegated Fabric/Power BI token with `Item.Execute.All`, issued in the Fabric item's owning tenant, and the user must have item Execute permission. Adding Microsoft's home tenant ID to frontend configuration cannot override these platform checks. A tenant ID identifies a directory, not employee status; that directory can also contain guests.
+
+The supported Entra mechanism to investigate is [organization-specific inbound B2B access](https://learn.microsoft.com/en-us/entra/external-id/cross-tenant-access-settings-b2b-collaboration), restricted to the verified Microsoft tenant and approved users/groups, followed by guest provisioning and Fabric item sharing. Microsoft outbound policy, Fabric guest/workload availability and licensing can still constrain access. This is a candidate sharing path, **not verified Rayfin guest support**. Do not replace the owning tenant, enable anonymous assets, weaken SQL ownership, or automatically grant workspace roles. Validate sign-in and caller isolation with an approved Microsoft employee before enabling broader access. No cross-tenant policy or sharing permissions were changed for the story page.
+
 ## Data and reviews
 
-Sign in and import normalized grant JSON, such as the root `npm run preview -- --out grants.preview.json` output. Imports update matching source IDs and add new grants to your own catalogue; they do not deactivate programs missing from an import. The deployed prototype was seeded with 320 Queensland-applicable business.gov.au programs.
+Sign in and import normalized grant JSON, such as the root `npm run preview -- --out grants.preview.json` output. Imports update matching source IDs and add new grants to your own catalogue; they do not deactivate programs missing from an import. All jurisdictions are retained; browsing and chat default to Queensland. Source records are not globally deduplicated across providers.
+
+To collect the complete implemented catalogue without a Grants Finder API key, explicitly select the public Queensland Government funding datasets:
+
+```bash
+# From the repository root:
+npm run preview -- --qld-open-data --out grants.preview.json
+# After deploying the expanded Fabric schema:
+npm --prefix apps/grants-fabric run import:catalogue -- ../../grants.preview.json
+```
+
+The public-data mode pages all **Current Program Funding** tables from Queensland's CKAN portal, ignores blank template rows, and retains service IDs, dataset URLs, modification timestamps and licence links. It is an explicit alternative to the protected API, not a silent fallback, and does not change the Azure weekly sync. The other feeds remain business.gov.au, curated official pages, Business Queensland discovery and public Brisbane/Ipswich SmartyGrants rounds. GrantConnect and other research leads without implemented adapters remain outside this catalogue.
+
+Imports retain all normalized fields: program/round, funding amounts and qualitative guidance, structured and free-text dates, annual budget and budget guidance, applicant/client/funding/activity classifications, agencies, application/outcome evidence, source/tag IDs, hashes and source timestamps. Previous records and these expanded fields are archived before overwriting, including same-hash schema backfills. Import time is separate from the provider's dataset update time. Summary, eligibility and application evidence support up to 8,000 characters through paired 4,000-character SQL columns; longer inputs fail explicitly rather than being truncated. Existing snapshots remain readable with their added fields unset.
+
+Rayfin 1.36.2's legacy response serializer coerces date-shaped text into `Date` objects. The app, CLI import and functions opt into its `cli-minor-fixes` serializer gate to preserve text exactly; the browser uses the standard `process` shim to expose that SDK environment flag. Genuine dates are formatted explicitly by the app.
 
 `GrantRecord`, `GrantVersion`, `GrantReview`, and `ChatTurn` in `rayfin/data/` enforce caller ownership. Imports archive the complete previous grant record before changing it; an archive failure blocks the overwrite. Snapshots and reviews are append-only and tied to the program's content hash, so changing a grant does not silently rewrite previous evidence or decisions. Previously overwritten content cannot be recovered; archive timestamps record when the app preserved evidence, not when the provider published it. Chat turns preserve the answer and cited source IDs, URLs, and revision hashes. Anonymous access and assigning another user's ownership are denied.
 
@@ -20,9 +43,19 @@ On desktop, the header, compact summary, tabs and footer fit within the dynamic 
 
 Controls use matching text-input/dropdown heights and QGDS's large outlined checkboxes. Panel insets leave room for keyboard-focus outlines, and toolbar checkboxes align with the controls rather than their headings.
 
+The masthead tagline reads **Find funding. Keep the evidence. Powered by Microsoft Fabric and Rayfin.** It sits to the right of the GrantFin logo with a QGDS blue divider and a separate platform-credit line; on small screens it stacks below the logo.
+
+Footer content uses the same centered maximum width and responsive gutters as the header and main canvas; its navy background remains full-width.
+
 The assistant's focus control is disabled and unchecked until a grant is selected, with a visible explanation that questions currently search matching Queensland grants. After selection, it identifies the grant being used as evidence; unchecking focus returns to catalogue-wide retrieval.
 
+Browse and review's **Catalogue source** filter starts on **business.gov.au**; dropdown labels use only the source names. A visible provenance notice explains that **All sources** includes the expanded catalogue and that results are manually imported snapshots, not live web searches. This browse filter does not restrict catalogue-wide assistant retrieval. Selecting a grant from the reviewer or quality table sets its source filter so the chosen evidence is visible.
+
 The **Reviewer table** tab leads with grant title, status, funding amount and dates, then categories and evidence; IDs, hashes and storage metadata are last. It includes all statuses and optional old snapshots, with sticky headings and grant names inside a scrollable table. Search covers full text, including collapsed evidence; source/status/decision filters and ascending/descending sort controls help reviewers narrow the records. Unknown amounts/dates sort last and zero funding remains distinct from missing data. Long evidence cells expand on demand to keep rows compact. Switch the table selector to **Review history** for decisions, notes, timestamps and version hashes; selecting a title opens the current grant for review.
+
+**Data quality** shows field availability by source and by program/round, with source drill-down, full-evidence search and a missing-field filter. It includes every status, excludes archived snapshots, defaults to active Queensland records and can include inactive records or all jurisdictions. Columns size to their headings and values, with blue QGDS dividers and intentionally two-line longer headings (for example, “Opening date” / “guidance”). Each source field has one full-cell fill using the official QGDS success green (`#339D37`) proportional to availability, with QGDS neutral-black text for contrast, and shows present/total counts by default. Click a cell, or focus it and press Enter/Space, to toggle that cell between count and percentage without adding columns or changing the fill. Zero amounts and false flags count as present; empty, unknown and dash-placeholder values do not. Unspecified fields may be legitimately inapplicable: completeness is not an accuracy, freshness or eligibility score.
+
+Reviewer labels and title sorting omit dash-only round placeholders from older imported titles (including BreastScreen Qld Sunshine Coast and Glenbrook Residential Aged Care Service). Current catalogue names are corrected; archived source titles and review-linked snapshots remain unchanged as evidence.
 
 Every successful question/answer pair is stored as an append-only row in the Fabric SQL `ChatTurn` table, with caller ownership, citations and a timestamp. The assistant reads all saved pages (not just the latest 20), displays newest answers first, and provides a timestamp and **Copy answer** control for each response. Copy confirmations dismiss after five seconds; another copy restarts the timer. Clipboard/storage failures remain visible and are reported explicitly. This is persisted conversation history, not model conversational memory: each question still retrieves fresh evidence independently.
 

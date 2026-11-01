@@ -3,6 +3,9 @@ import type { GrantsAppSchema } from '../../data/schema.js';
 import type { GrantRecord } from '../../data/GrantRecord.js';
 import { retrieveGrants, type ChatResult } from './grounding.js';
 import { askCopilot } from './copilotChat.js';
+import { enableLosslessText, grantFields } from './grantFields.js';
+
+enableLosslessText(process.env);
 
 const udf = new UserDataFunctions();
 
@@ -18,11 +21,8 @@ udf.func('askGrants', async (
   const grants: GrantRecord[] = [];
   let cursor: string | undefined;
   do {
-    const query = data.GrantRecord.select([
-      'id', 'user_id', 'sourceId', 'source', 'title', 'summary', 'eligibility',
-      'howToApply', 'url', 'status', 'openingDate', 'closingDate', 'amount',
-      'jurisdictions', 'categories', 'contentHash', 'active',
-    ]).where({ active: { eq: true } }).orderBy({ id: 'asc' }).first(200);
+    const query = data.GrantRecord.select(['id', 'user_id', ...grantFields])
+      .where({ active: { eq: true } }).orderBy({ id: 'asc' }).first(200);
     const page = await (cursor ? query.after(cursor) : query).executePaginated();
     grants.push(...page.items);
     if (grants.length > 10_000) throw new Error('The catalogue exceeds this prototype’s 10,000-grant retrieval limit.');

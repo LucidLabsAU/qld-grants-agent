@@ -86,13 +86,15 @@ function App() {
           }
         />
         <Route
-          path="/"
           element={
             <AuthGuard requireAuth={true}>
               <HomePage />
             </AuthGuard>
           }
-        />
+        >
+          <Route index />
+          <Route path="/why-and-how" />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -21,6 +21,16 @@ describe('buildDimensionLookup', () => {
 });
 
 describe('normalizeGrant', () => {
+  it('does not prepend placeholder sub-program dashes to real program names', () => {
+    const raw = {
+      ...services['60001']!, name: 'BreastScreen Qld Sunshine Coast',
+      details: { ...services['60001']!.details, sub_program_title: { title: 'Sub-program', sections: [{ type: 'text', data: '-' }] } },
+    };
+    expect(normalizeGrant(raw, lookup, NOW)).toMatchObject({
+      title: 'BreastScreen Qld Sunshine Coast', programName: 'BreastScreen Qld Sunshine Coast', roundName: null,
+    });
+  });
+
   it('flattens details and joins dimensions', () => {
     const doc = normalizeGrant(services['60001']!, lookup, NOW);
     expect(doc).toMatchObject({

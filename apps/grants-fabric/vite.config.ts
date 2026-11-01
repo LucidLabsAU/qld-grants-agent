@@ -33,6 +33,7 @@ export default defineConfig(({ mode, command }) => {
     resolve: {
       alias: {
         '@': resolve(import.meta.dirname, 'src'),
+        process: resolve(import.meta.dirname, 'node_modules/process/browser.js'),
       },
     },
     server: { host: '127.0.0.1', ...(port ? { port, strictPort: true } : {}) },

@@ -22,6 +22,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "smoke": "node --import tsx scripts/smoke.mjs",
+    "import:catalogue": "node --import tsx scripts/import-catalogue.mjs",
     "deploy:fabric": "node scripts/deploy-fabric.mjs",
     "rayfin:db": "rayfin up db apply"
   },
@@ -34,7 +35,8 @@
     "@tailwindcss/vite": "^4.1.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.1"
+    "react-router-dom": "^7.1.1",
+    "process": "0.11.10"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { getGrantVersions, getReviews, type GrantRecord, type GrantVersion, type GrantReview } from '@/services/grants';
+import { catalogueFields, evidenceFields, evidenceText, listFields } from '../../rayfin/functions/src/grantFields';
 
 type RecordRow = GrantRecord | GrantVersion;
 const fields = [
   ['status', 'Status'], ['amount', 'Amount (AUD)'], ['closingDate', 'Closes'], ['openingDate', 'Opens'],
   ['categories', 'Categories'], ['jurisdictions', 'Jurisdictions'], ['summary', 'Summary'],
   ['eligibility', 'Eligibility evidence'], ['howToApply', 'How to apply'], ['url', 'Official source'],
+  ...catalogueFields.filter(([key]) => ![
+    'title', 'status', 'amount', 'closingDate', 'openingDate', 'categories', 'jurisdictions', 'summary', 'eligibility', 'howToApply', 'url',
+  ].includes(key)),
 ] as const satisfies readonly (readonly [keyof RecordRow, string])[];
 const technicalFields = [
-  ['source', 'Source'], ['sourceId', 'Source ID'], ['active', 'Active'], ['contentHash', 'Content hash'], ['id', 'Record ID'],
+  ['source', 'Source'], ['sourceId', 'Source ID'], ['importedAt', 'Imported at'], ['active', 'Active'], ['contentHash', 'Content hash'], ['id', 'Record ID'],
 ] as const satisfies readonly (readonly [keyof RecordRow, string])[];
 const decisions: Record<GrantReview['decision'], string> = {
   researching: 'Researching', shortlisted: 'Shortlisted', ready: 'Ready to apply', dismissed: 'Dismissed',
@@ -48,7 +52,8 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
   const sources = [...new Set(allRows.map((row) => row.source))].sort();
   const matches = (row: RecordRow) => row.jurisdictions.split('|').includes('Queensland')
     && (!status || (row.status || 'Unknown') === status) && (!source || row.source === source)
-    && [...fields, ...technicalFields].map(([field]) => String(row[field])).concat(
+    && [...fields, ...technicalFields].map(([field]) => evidenceFields.some((key) => key === field)
+      ? evidenceText(row, field as typeof evidenceFields[number]) : String(row[field] ?? '')).concat(
       row.title,
       row.openingDate ? new Date(row.openingDate).toLocaleDateString('en-AU') : '',
       row.closingDate ? new Date(row.closingDate).toLocaleDateString('en-AU') : '',
@@ -72,11 +77,12 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
 
   function recordCell(row: RecordRow, key: keyof RecordRow) {
     const value = row[key];
-    if (key === 'url' && row.url) return <a href={row.url} target="_blank" rel="noreferrer">{row.url}</a>;
+    if (['url', 'sourceDatasetUrl', 'licenseUrl'].includes(key) && value) return <a href={String(value)} target="_blank" rel="noreferrer">{String(value)}</a>;
     if (key === 'amount') return row.amount === '' ? 'Not specified' : Number(row.amount).toLocaleString('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 2 });
-    if (key === 'openingDate' || key === 'closingDate') return value ? new Date(String(value)).toLocaleDateString('en-AU') : 'Not specified';
+    if (['openingDate', 'closingDate', 'sourceUpdatedAt', 'lastChangedAt', 'importedAt'].includes(key)) return value ? new Date(String(value)).toLocaleString('en-AU') : 'Not specified';
     if (key === 'status') return row.status || 'Unknown';
-    if (key === 'categories' || key === 'jurisdictions') return <EvidenceCell text={String(value || '—').split('|').join(', ')} />;
+    if (listFields.some((field) => field === key)) return <EvidenceCell text={String(value || '—').split('|').join(', ')} />;
+    if (evidenceFields.some((field) => field === key)) return <EvidenceCell text={evidenceText(row, key as typeof evidenceFields[number]) || '—'} />;
     if (typeof value === 'boolean') return value ? 'Yes' : 'No';
     return <EvidenceCell text={String(value || '—')} />;
   }
@@ -114,7 +120,7 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
         <caption>{rows.length} grant records and versions. Select a title to open the current grant in the workbench.</caption>
         <thead><tr><th scope="col">Grant</th>{fields.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}<th scope="col">Version</th><th scope="col">Archived at</th>{technicalFields.map(([key, label]) => <th scope="col" key={key}>{label}</th>)}</tr></thead>
         <tbody>{rows.map((row) => <tr key={`${'grantId' in row ? 'version' : 'current'}-${row.id}`}>
-          <th scope="row"><button className="table-link" onClick={() => onSelect('grantId' in row ? row.grantId : row.id)}>{row.title}</button></th>
+          <th scope="row"><button className="table-link" onClick={() => onSelect('grantId' in row ? row.grantId : row.id)}>{recordTitle(row)}</button></th>
           {fields.map(([key]) => <td key={key}>{recordCell(row, key)}</td>)}
           <td><span className="badge">{'grantId' in row ? 'Old version' : 'Current'}</span></td>
           <td>{'archivedAt' in row ? new Date(row.archivedAt).toLocaleString('en-AU') : '—'}</td>
@@ -125,7 +131,7 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
         <thead><tr>{['Grant', 'Decision', 'Evidence and next steps', 'Reviewed at', 'Version', 'Content hash', 'Review ID', 'Grant ID'].map((label) => <th scope="col" key={label}>{label}</th>)}</tr></thead>
         <tbody>{visibleReviews.map((review) => {
           const grant = grants.find((row) => row.id === review.grantId)!;
-          return <tr key={review.id}><th scope="row"><button className="table-link" onClick={() => onSelect(grant.id)}>{grant.title}</button></th>
+          return <tr key={review.id}><th scope="row"><button className="table-link" onClick={() => onSelect(grant.id)}>{recordTitle(grant)}</button></th>
             <td>{decisions[review.decision]}</td><td><EvidenceCell text={review.notes || '—'} /></td><td>{new Date(review.createdAt).toLocaleString('en-AU')}</td>
             <td>{review.contentHash === grant.contentHash ? 'Current' : 'Old version — recheck evidence'}</td><td>{review.contentHash}</td><td>{review.id}</td><td>{review.grantId}</td></tr>;
         })}</tbody>
@@ -135,13 +141,19 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
   </section>;
 }
 
+function recordTitle(row: RecordRow): string {
+  // Clean labels from older imports without modifying their archived evidence.
+  return row.roundName && /^[-–—\s]+$/.test(row.roundName)
+    ? row.title.replace(/^[-–—]+\s+[–—]\s+/, '') : row.title;
+}
+
 function recordSortValue(row: RecordRow, sort: string): string | number | null {
   switch (sort) {
     case 'amount': return row.amount === '' ? null : Number(row.amount);
     case 'closingDate': return row.closingDate ? Date.parse(row.closingDate) : null;
     case 'archivedAt': return 'archivedAt' in row ? new Date(row.archivedAt).getTime() : null;
     case 'status': return row.status || 'Unknown';
-    default: return row.title;
+    default: return recordTitle(row);
   }
 }
 

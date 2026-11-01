@@ -1,4 +1,4 @@
-export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table') => void }) {
+export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table' | 'quality') => void }) {
   return <div className="welcome-page">
     <section className="welcome-hero" aria-labelledby="welcome-title">
       <div>
@@ -9,6 +9,7 @@ export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table') 
       <div className="welcome-actions">
         <button className="primary" onClick={() => onOpen('workbench')}>Browse and review</button>
         <button onClick={() => onOpen('table')}>View reviewer table</button>
+        <button onClick={() => onOpen('quality')}>Check data quality</button>
       </div>
     </section>
 
@@ -24,6 +25,8 @@ export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table') 
             Long evidence expands when you need it. Select a title to return to its current grant.</p></li>
           <li><h3>Ask with evidence</h3><p>Ask about the selected grant or search your matching catalogue. Answers retrieve stored evidence and cite sources.
             Each saved response has a timestamp and a copy control.</p></li>
+          <li><h3>Find evidence gaps</h3><p>Data quality compares field availability by source and program, including funding guidance, agencies and applicant types.
+            Filter a missing field to find records that need checking. Completeness is not an accuracy or eligibility score.</p></li>
         </ol>
       </section>
 
