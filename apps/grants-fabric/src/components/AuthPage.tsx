@@ -6,7 +6,7 @@ export function AuthPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   return <main className="auth-shell"><section className="panel auth-card">
-    <span className="eyebrow">FABRIC / RAYFIN</span><h1>Grants Workbench</h1>
+    <h1>GrantFin</h1>
     <p>Research Queensland grants, record your review trail, and ask questions grounded in source evidence.</p>
     <button className="primary" disabled={busy} onClick={() => {
       setBusy(true); setError('');

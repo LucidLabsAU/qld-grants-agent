@@ -1,6 +1,6 @@
-# Grants Workbench
+# GrantFin
 
-A high-code Rayfin prototype for a private Queensland grants catalogue, human grant reviews, and grounded **GitHub Copilot SDK** chat. Fabric hosts authentication, SQL data, static assets, and functions; Azure OpenAI supplies the model through Entra authentication.
+A high-code Rayfin prototype for a private Queensland grants catalogue, human grant reviews, and grounded **GitHub Copilot SDK** chat. Fabric hosts authentication, SQL data, static assets, and functions; Azure OpenAI supplies the model through Entra authentication. The product is named **GrantFin**; its existing Fabric item remains **Grants Workbench** so deployment identifiers and stored data stay unchanged.
 
 **[Deployed app](https://deft-wheat-ac5929f368-australiaeast.webapp.fabricapps.net)** (Fabric sign-in required). This is an independent proof of concept, not an official grants service or an eligibility decision.
 
@@ -12,7 +12,9 @@ Sign in and import normalized grant JSON, such as the root `npm run preview -- -
 
 ## Workbench design
 
-The app uses the official [Queensland Government Design System (QGDS)](https://github.com/qld-gov-au/qgds-bootstrap5), via the ISC-licensed `@qld-gov-au/qgds-bootstrap5` stylesheet and its colour/typography tokens. It does not display the Queensland Government crest or imply government endorsement. The bottom-right **Built by** footer uses the supplied Lucid Labs / Microsoft / GitHub white logo lockup, hosted locally.
+The app uses the official [Queensland Government Design System (QGDS)](https://github.com/qld-gov-au/qgds-bootstrap5), via the ISC-licensed `@qld-gov-au/qgds-bootstrap5` stylesheet and its colour/typography tokens. Its page framing follows the live qld.gov.au site: a blue utility bar, white masthead, grey navigation band with a pale-blue rule, breadcrumbs, navy headings, and a centered white content canvas. Catalogue entries use the site's divided-list treatment rather than dashboard cards. The top-left masthead uses the supplied GrantFin PNG logo lockup, hosted locally, not the Queensland Government crest, and labels itself an independent prototype. The bottom-right **Built by** footer uses the supplied Lucid Labs / Microsoft / GitHub white logo lockup, hosted locally.
+
+**Home** is the default introduction after sign-in. It explains GrantFin, manual imports, catalogue/review/table workflows, grounded answers, private SQL storage and prototype limitations, with direct buttons into **Workbench** and **Table**. The home icon returns to this introduction; switching views preserves the selected grant, review draft and question draft.
 
 On desktop, the header, compact summary, tabs and footer fit within the dynamic viewport; catalogue, evidence and chat history scroll independently, with the question composer kept visible. Narrow screens and short/zoomed viewports return to a stacked, scrolling layout rather than clipping controls.
 

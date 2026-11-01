@@ -13,7 +13,7 @@ try {
   root.render(<AuthProvider authService={authService}><App /></AuthProvider>);
 } catch (error) {
   root.render(<main className="auth-shell"><section className="panel auth-card">
-    <h1>Grants Workbench</h1><p role="alert" className="error">{error instanceof Error ? error.message : 'App initialization failed.'}</p>
+    <h1>GrantFin</h1><p role="alert" className="error">{error instanceof Error ? error.message : 'App initialization failed.'}</p>
     <button onClick={() => window.location.reload()}>Retry</button>
   </section></main>);
 }

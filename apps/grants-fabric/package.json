@@ -9,7 +9,7 @@
   },
   "template": {
     "name": "grants-fabric",
-    "displayName": "Grants Workbench",
+    "displayName": "GrantFin",
     "description": "Private grant catalogue, immutable reviews, and grounded Copilot SDK chat hosted by Microsoft Fabric."
   },
   "scripts": {

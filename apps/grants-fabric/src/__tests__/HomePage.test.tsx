@@ -36,9 +36,50 @@ beforeEach(() => {
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: mocks.clipboard } });
 });
 
+function renderWorkbench() {
+  render(<HomePage />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Workbench' }));
+}
+
 describe('reviewer workspace', () => {
-  it('explains unselected chat scope and enables focus only when a grant is selected', async () => {
+  it('opens on GrantFin Home and explains the app with actions into its working views', async () => {
     render(<HomePage />);
+    expect(screen.getByRole('heading', { name: 'GrantFin' })).toBeInTheDocument();
+    expect(within(screen.getByRole('banner')).getByRole('img', { name: 'GrantFin' })).toHaveAttribute('src', '/brands/grantfin.png');
+    expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Where your evidence lives' })).toBeInTheDocument();
+    expect(screen.getByText(/Imports are manual, and availability can change/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Workbench' }));
+    expect(screen.getByRole('tab', { name: 'Workbench' })).toHaveFocus();
+    expect(screen.queryByRole('heading', { name: 'How it works' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View reviewer table' }));
+    expect(await screen.findByText('Original evidence')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Table' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Table' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Home' }), { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'Table' })).toHaveFocus();
+  });
+
+  it('preserves the selected grant and unsaved drafts when returning Home and back', async () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open now only' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Community grant/ }));
+    await screen.findByRole('heading', { name: 'Community grant' });
+    fireEvent.change(screen.getByLabelText('Evidence and next steps'), { target: { value: 'Unsaved review evidence' } });
+    fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Unsaved question' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
+    expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Workbench' }));
+    expect(screen.getByRole('heading', { name: 'Community grant' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Evidence and next steps')).toHaveValue('Unsaved review evidence');
+    expect(screen.getByLabelText('Your question')).toHaveValue('Unsaved question');
+  });
+
+  it('explains unselected chat scope and enables focus only when a grant is selected', async () => {
+    renderWorkbench();
     const focus = screen.getByRole('checkbox', { name: 'Focus on selected grant' });
     expect(focus).toBeDisabled();
     expect(focus).not.toBeChecked();
@@ -71,14 +112,14 @@ describe('reviewer workspace', () => {
   });
 
   it('searches full evidence and supports keyboard tab navigation', async () => {
-    render(<HomePage />);
+    renderWorkbench();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Workbench' }), { key: 'ArrowRight' });
     expect(await screen.findByText('Original evidence')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Search all fields'), { target: { value: 'Original evidence' } });
     expect(screen.queryByText('Current evidence')).not.toBeInTheDocument();
     expect(screen.getByText('Original evidence')).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Table' }), { key: 'Home' });
-    expect(screen.getByRole('tab', { name: 'Workbench' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
   });
 
   it('reports missing history instead of displaying a success-shaped empty result', async () => {
@@ -137,7 +178,7 @@ describe('reviewer workspace', () => {
       sourcesJson: '[]', createdAt: new Date('2026-11-01T03:00:00Z'),
     };
     mocks.getChat.mockResolvedValue([turn]);
-    render(<HomePage />);
+    renderWorkbench();
     const copy = await screen.findByRole('button', { name: 'Copy answer' });
     expect(screen.getByText(new Date(turn.createdAt).toLocaleString('en-AU')).closest('time')).toHaveAttribute('datetime', '2026-11-01T03:00:00.000Z');
     fireEvent.click(copy);

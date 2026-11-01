@@ -7,6 +7,12 @@ import {
 import { isOpenNow, type ChatSource } from '../../rayfin/functions/src/grounding';
 import { BuiltBy } from '@/components/BuiltBy';
 import { ReviewerTable } from '@/components/ReviewerTable';
+import { WelcomePage } from '@/pages/WelcomePage';
+
+const views = [
+  { id: 'home', label: 'Home' }, { id: 'workbench', label: 'Workbench' }, { id: 'table', label: 'Table' },
+] as const;
+type WorkspaceView = typeof views[number]['id'];
 
 export function HomePage() {
   const { signOut, user } = useAuth();
@@ -24,7 +30,7 @@ export function HomePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'workbench' | 'table'>('workbench');
+  const [tab, setTab] = useState<WorkspaceView>('home');
   const [refreshKey, setRefreshKey] = useState(0);
   const selected = grants.find((grant) => grant.id === selectedId);
   const visible = grants.filter((grant) => grant.active && grant.jurisdictions.split('|').includes('Queensland')
@@ -62,15 +68,24 @@ export function HomePage() {
     finally { setBusy(''); }
   }
 
+  function openView(view: WorkspaceView) {
+    setTab(view);
+    document.getElementById(`${view}-tab`)?.focus();
+  }
+
   return (
     <div className="workbench">
+      <a className="skip-link" href="#workspace">Skip to main content</a>
+      <div className="utility-bar">
+        <div className="site-width utility-inner">
+          <span>Queensland grants <span className="prototype-label">Independent prototype</span></span>
+          <div className="header-actions"><span>{user?.email}</span><button onClick={() => void run('Signing out', signOut)}>Sign out</button></div>
+        </div>
+      </div>
       <header className="app-header">
-        <div><span className="eyebrow">QUEENSLAND GRANTS / FABRIC</span><h1>Grants Workbench</h1></div>
-        <div className="header-actions"><span>{user?.email}</span><button onClick={() => void run('Signing out', signOut)}>Sign out</button></div>
-      </header>
-      <main className="workspace" id="workspace">
-        <div className="intro"><div><h2>Find funding. Keep the evidence.</h2><p>Your Queensland catalogue, review trail, and grounded research assistant in one workspace.</p></div>
-          <label className="import-button">Import normalized grants
+        <div className="site-width masthead">
+          <div className="app-brand"><div><h1><img className="brand-logo" src="/brands/grantfin.png" alt="GrantFin" width="240" height="76" /></h1><p>Find funding. Keep the evidence.</p></div></div>
+          <label className="import-button">Import grants
             <input type="file" accept=".json,application/json" disabled={!!busy} onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = '';
@@ -84,23 +99,38 @@ export function HomePage() {
             }} />
           </label>
         </div>
+      </header>
+      <div className="workspace-nav">
+        <div className="site-width nav-inner">
+          <div className="workspace-tabs" role="tablist" aria-label="Workspace view">
+            {views.map((view, index) => <button key={view.id} id={`${view.id}-tab`} role="tab" aria-selected={tab === view.id} aria-controls={`${view.id}-view`} tabIndex={tab === view.id ? 0 : -1}
+              onClick={() => setTab(view.id)} onKeyDown={(event) => {
+                if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? views.length - 1
+                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length;
+                openView(views[next].id);
+              }}>
+              {view.id === 'home' && <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 10 12 3l9 7v11h-6v-7H9v7H3Z" /></svg>}{view.label}
+            </button>)}
+          </div>
+          <div className="metrics" aria-label="Catalogue summary"><span><strong>{grants.filter((grant) => grant.active).length}</strong> grants</span>
+            <span><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong> open now</span></div>
+        </div>
+      </div>
+      <main className="workspace site-width" id="workspace" tabIndex={-1}>
+        <nav className="workspace-breadcrumbs" aria-label="Breadcrumb"><ol>
+          <li><a href="https://www.grants.services.qld.gov.au/" target="_blank" rel="noreferrer">Queensland grants</a></li>
+          <li aria-current="page">{tab === 'home' ? 'About GrantFin' : tab === 'workbench' ? 'Browse and review' : 'Reviewer table'}</li>
+        </ol></nav>
         {error && <div role="alert" className="error">{error}</div>}
         {notice && <div role="status" className="notice">{notice}</div>}
         {busy && <p role="status">{busy}…</p>}
-        <div className="metrics"><div><strong>{grants.filter((grant) => grant.active).length}</strong><span>Stored grants</span></div>
-          <div><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong><span>Open now</span></div></div>
-        <div className="workspace-tabs" role="tablist" aria-label="Workspace view">
-          <button id="workbench-tab" role="tab" aria-selected={tab === 'workbench'} aria-controls="workbench-view" tabIndex={tab === 'workbench' ? 0 : -1}
-            onClick={() => setTab('workbench')} onKeyDown={(event) => {
-              if (['ArrowRight', 'ArrowLeft', 'End'].includes(event.key)) { event.preventDefault(); setTab('table'); document.getElementById('table-tab')?.focus(); }
-            }}>Workbench</button>
-          <button id="table-tab" role="tab" aria-selected={tab === 'table'} aria-controls="table-view" tabIndex={tab === 'table' ? 0 : -1}
-            onClick={() => setTab('table')} onKeyDown={(event) => {
-              if (['ArrowRight', 'ArrowLeft', 'Home'].includes(event.key)) { event.preventDefault(); setTab('workbench'); document.getElementById('workbench-tab')?.focus(); }
-            }}>Table</button>
+        <div id="home-view" role="tabpanel" aria-labelledby="home-tab" hidden={tab !== 'home'} className="home-view">
+          <WelcomePage onOpen={openView} />
         </div>
         <div id="table-view" role="tabpanel" aria-labelledby="table-tab" hidden={tab !== 'table'} className="table-view">
-          {tab === 'table' && <ReviewerTable grants={grants} refreshKey={refreshKey} onSelect={(id) => { setSelectedId(id); setTab('workbench'); document.getElementById('workbench-tab')?.focus(); }} />}
+          {tab === 'table' && <ReviewerTable grants={grants} refreshKey={refreshKey} onSelect={(id) => { setSelectedId(id); openView('workbench'); }} />}
         </div>
         <div id="workbench-view" role="tabpanel" aria-labelledby="workbench-tab" hidden={tab !== 'workbench'} className="columns">
           <section className="panel catalogue">

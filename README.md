@@ -57,7 +57,7 @@ The broader vision is the same grounded agent wherever someone needs help: embed
 | **Grants data and search** | Weekly feed/page/portal ingestion, deduplication, automatic revision history, change tracking, facets, keyword/vector/hybrid search and semantic ranking. | [Querying](#querying) |
 | **Grounded grants agent** | A YAML-defined Foundry prompt agent connected to a FoundryIQ knowledge base through MCP, with Application Insights monitoring. | [Grants agent](#grants-agent) |
 | **Experience prototype** | A separate Edge/Chrome extension and local authentication bridge demonstrating the journey on the existing public site. It is not deployed by the infrastructure template. | [Demo setup](demo/grants-finder-extension/README.md) |
-| **Fabric workbench** | A separate QGDS-styled Rayfin app with a viewport-fitted workspace, reviewer tables, archived grant evidence, immutable human reviews, and Copilot SDK chat with persisted citations. | [Fabric app](apps/grants-fabric/README.md) |
+| **GrantFin workbench** | A separate QGDS-styled Rayfin app with an introductory Home page, viewport-fitted workspace, reviewer tables, archived grant evidence, immutable human reviews, and Copilot SDK chat with persisted citations. | [Fabric app](apps/grants-fabric/README.md) |
 | **Deployment as code** | Bicep infrastructure, JSON search definitions and scripts to publish the search objects and agent. | [Deploy](#deploy) |
 
 The prototype stays separate from the backend: it calls the published agent through the Foundry Responses API and does not change the ingestion, index or agent deployment. You can use the backend entirely without the extension.
