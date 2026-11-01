@@ -7,7 +7,7 @@ export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table') 
           An evidence-first research assistant helps you ask better questions before applying.</p>
       </div>
       <div className="welcome-actions">
-        <button className="primary" onClick={() => onOpen('workbench')}>Open Workbench</button>
+        <button className="primary" onClick={() => onOpen('workbench')}>Browse and review</button>
         <button onClick={() => onOpen('table')}>View reviewer table</button>
       </div>
     </section>
@@ -18,9 +18,9 @@ export function WelcomePage({ onOpen }: { onOpen: (view: 'workbench' | 'table') 
         <ol className="welcome-steps">
           <li><h3>Bring in your grants</h3><p>Use <strong>Import grants</strong> to upload normalized grant JSON from the project feeds.
             Imports add or update your private catalogue and preserve the previous evidence before a grant changes.</p></li>
-          <li><h3>Explore and review</h3><p>Open Workbench to search Queensland grants, check current opening and closing dates,
+          <li><h3>Explore and review</h3><p>Use Browse and review to search Queensland grants, check current opening and closing dates,
             and read a selected grant's evidence. Record your decision, questions and next steps.</p></li>
-          <li><h3>Compare the details</h3><p>Use Table to filter and sort every stored field, inspect old grant versions and review previous decisions.
+          <li><h3>Compare the details</h3><p>Use Reviewer table to filter and sort every stored field, inspect old grant versions and review previous decisions.
             Long evidence expands when you need it. Select a title to return to its current grant.</p></li>
           <li><h3>Ask with evidence</h3><p>Ask about the selected grant or search your matching catalogue. Answers retrieve stored evidence and cite sources.
             Each saved response has a timestamp and a copy control.</p></li>

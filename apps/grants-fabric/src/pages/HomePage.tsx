@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '@/hooks/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import {
   askGrants, getChat, getGrants, getReviews, importGrants, saveReview,
   type ChatTurn, type GrantRecord, type GrantReview,
@@ -10,9 +10,10 @@ import { ReviewerTable } from '@/components/ReviewerTable';
 import { WelcomePage } from '@/pages/WelcomePage';
 
 const views = [
-  { id: 'home', label: 'Home' }, { id: 'workbench', label: 'Workbench' }, { id: 'table', label: 'Table' },
+  { id: 'home', label: 'Home' }, { id: 'workbench', label: 'Browse and review' }, { id: 'table', label: 'Reviewer table' },
 ] as const;
 type WorkspaceView = typeof views[number]['id'];
+const copyNotice = 'Answer copied to clipboard.';
 
 export function HomePage() {
   const { signOut, user } = useAuth();
@@ -58,6 +59,12 @@ export function HomePage() {
     }
     return () => { cancelled = true; };
   }, [selectedId]);
+
+  useEffect(() => {
+    if (notice !== copyNotice) return;
+    const timer = setTimeout(() => setNotice(''), 5000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   async function run(action: string, operation: () => Promise<void>) {
     setBusy(action);
@@ -120,7 +127,7 @@ export function HomePage() {
       </div>
       <main className="workspace site-width" id="workspace" tabIndex={-1}>
         <nav className="workspace-breadcrumbs" aria-label="Breadcrumb"><ol>
-          <li><a href="https://www.grants.services.qld.gov.au/" target="_blank" rel="noreferrer">Queensland grants</a></li>
+          <li><a href="#home-view" onClick={(event) => { event.preventDefault(); openView('home'); }}>Queensland grants</a></li>
           <li aria-current="page">{tab === 'home' ? 'About GrantFin' : tab === 'workbench' ? 'Browse and review' : 'Reviewer table'}</li>
         </ol></nav>
         {error && <div role="alert" className="error">{error}</div>}
@@ -136,7 +143,7 @@ export function HomePage() {
           <section className="panel catalogue">
             <div className="panel-heading"><h2>Grant catalogue</h2><span>{visible.length} matching</span></div>
             <label>Search grants<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Innovation, community, export…" /></label>
-            <label className="check"><input type="checkbox" checked={openOnly} onChange={(event) => setOpenOnly(event.target.checked)} />Open now only</label>
+            <div className="form-check check"><input className="form-check-input" id="open-now-only" type="checkbox" checked={openOnly} onChange={(event) => setOpenOnly(event.target.checked)} /><label className="form-check-label" htmlFor="open-now-only">Open now only</label></div>
             <p className="muted">Queensland jurisdiction. Opening and closing dates checked now, not cached isOpen.</p>
             {loading ? <p>Loading Fabric data…</p> : visible.length === 0 ? <p className="empty">No matching grants. Import the JSON from the repository’s preview command, or adjust your filters.</p> : (
               <div className="grant-list">{visible.map((grant) => <button key={grant.id} disabled={!!busy} className={`grant-card ${selectedId === grant.id ? 'selected' : ''}`} onClick={() => setSelectedId(grant.id)}>
@@ -155,21 +162,6 @@ export function HomePage() {
               <p className="prose">{selected.summary || 'No summary supplied.'}</p>
               <details><summary>Eligibility evidence</summary><p className="prose">{selected.eligibility || 'Not supplied. Check the official source.'}</p></details>
               <details><summary>How to apply</summary><p className="prose">{selected.howToApply || 'Not supplied. Check the official source.'}</p></details>
-              <form onSubmit={(event) => {
-                event.preventDefault();
-                void run('Saving review', async () => {
-                  await saveReview(selected, decision, notes);
-                  setReviews(await getReviews(selected.id));
-                  setRefreshKey((key) => key + 1);
-                  setNotice('Review saved against this grant version.');
-                });
-              }}>
-                <label>Review decision<select className="form-select" value={decision} onChange={(event) => setDecision(event.target.value as GrantReview['decision'])}>
-                  <option value="researching">Researching</option><option value="shortlisted">Shortlisted</option><option value="ready">Ready to apply</option><option value="dismissed">Dismissed</option>
-                </select></label>
-                <label>Evidence and next steps<textarea value={notes} maxLength={4000} rows={4} onChange={(event) => setNotes(event.target.value)} placeholder="Record questions, evidence gaps, and next steps." /></label>
-                <button className="primary" disabled={!!busy}>Save review</button>
-              </form>
               <h3>Review history</h3>
               {!reviews.length && <p className="muted">No reviews yet. Decisions are research notes, not eligibility verdicts.</p>}
               {reviews.map((review) => <article className="history" key={review.id}>
@@ -179,11 +171,26 @@ export function HomePage() {
               </article>)}
             </>}
             </div>
+            {selected && <form onSubmit={(event) => {
+              event.preventDefault();
+              void run('Saving review', async () => {
+                await saveReview(selected, decision, notes);
+                setReviews(await getReviews(selected.id));
+                setRefreshKey((key) => key + 1);
+                setNotice('Review saved against this grant version.');
+              });
+            }}>
+              <label>Review decision<select className="form-select" value={decision} onChange={(event) => setDecision(event.target.value as GrantReview['decision'])}>
+                <option value="researching">Researching</option><option value="shortlisted">Shortlisted</option><option value="ready">Ready to apply</option><option value="dismissed">Dismissed</option>
+              </select></label>
+              <label>Evidence and next steps<textarea value={notes} maxLength={4000} rows={3} onChange={(event) => setNotes(event.target.value)} placeholder="Record questions, evidence gaps, and next steps." /></label>
+              <button className="primary" disabled={!!busy}>Save review</button>
+            </form>}
           </section>
           <section className="panel chat">
             <div className="panel-heading"><h2>Research assistant</h2><span>Fabric-hosted function</span></div>
             <p className="muted">Retrieves your stored Queensland grants before answering. Keyword retrieval, not an exhaustive search. No eligibility verdicts.</p>
-            <label className="check"><input type="checkbox" checked={scoped && !!selected} disabled={!selected} aria-describedby="chat-scope-info" onChange={(event) => setScoped(event.target.checked)} />Focus on selected grant</label>
+            <div className="form-check check"><input className="form-check-input" id="focus-selected-grant" type="checkbox" checked={scoped && !!selected} disabled={!selected} aria-describedby="chat-scope-info" onChange={(event) => setScoped(event.target.checked)} /><label className="form-check-label" htmlFor="focus-selected-grant">Focus on selected grant</label></div>
             <p id="chat-scope-info" className="muted scope-info">{!selected
               ? 'No grant selected. Choose one in the catalogue to focus your questions. Until then, the assistant searches your matching Queensland grants.'
               : scoped ? `Focused on: ${selected.title}` : 'Searching your matching Queensland grants, not just the selected grant.'}</p>
@@ -194,7 +201,7 @@ export function HomePage() {
                   <button disabled={!!busy} onClick={() => void run('Copying answer', async () => {
                     if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable. Open the app in a secure browser context to copy answers.');
                     await navigator.clipboard.writeText(turn.answer);
-                    setNotice('Answer copied to clipboard.');
+                    setNotice(copyNotice);
                   })}>Copy answer</button></div>
                 <h3>{turn.question}</h3><p className="prose">{turn.answer}</p>
                 <Sources json={turn.sourcesJson} />

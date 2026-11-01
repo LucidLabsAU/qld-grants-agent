@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuth } from '@/hooks/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 
 export function AuthPage() {
   const { signIn, error: authError } = useAuth();

@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useState,
@@ -9,18 +7,7 @@ import {
 } from 'react';
 
 import { type AuthUser, type IAuthService } from '@/services/IAuthService';
-
-interface AuthContextValue {
-  user: AuthUser | null;
-  loading: boolean;
-  error: string | null;
-  signIn: () => Promise<AuthUser>;
-  signOut: () => Promise<void>;
-  isAuthenticated: boolean;
-  fabricAuthEnabled: boolean;
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+import { AuthContext, type AuthContextValue } from '@/hooks/useAuth';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -95,12 +82,4 @@ export function AuthProvider({ children, authService }: AuthProviderProps) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 }

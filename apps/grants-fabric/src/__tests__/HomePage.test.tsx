@@ -1,14 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from '@/pages/HomePage';
 import type { ChatTurn, GrantRecord, GrantReview, GrantVersion } from '@/services/grants';
 
 const mocks = vi.hoisted(() => ({
-  getGrants: vi.fn(), getChat: vi.fn(), getReviews: vi.fn(), getGrantVersions: vi.fn(), clipboard: vi.fn(),
+  getGrants: vi.fn(), getChat: vi.fn(), getReviews: vi.fn(), getGrantVersions: vi.fn(), saveReview: vi.fn(), clipboard: vi.fn(),
 }));
-vi.mock('@/hooks/AuthContext', () => ({ useAuth: () => ({ signOut: vi.fn(), user: { email: 'reviewer@example.test' } }) }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ signOut: vi.fn(), user: { email: 'reviewer@example.test' } }) }));
 vi.mock('@/services/grants', () => ({
-  ...mocks, askGrants: vi.fn(), importGrants: vi.fn(), saveReview: vi.fn(),
+  ...mocks, askGrants: vi.fn(), importGrants: vi.fn(),
 }));
 
 const grant: GrantRecord = {
@@ -32,13 +32,14 @@ beforeEach(() => {
   mocks.getChat.mockResolvedValue([]);
   mocks.getReviews.mockResolvedValue([review]);
   mocks.getGrantVersions.mockResolvedValue([version]);
+  mocks.saveReview.mockResolvedValue(undefined);
   mocks.clipboard.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: mocks.clipboard } });
 });
 
 function renderWorkbench() {
   render(<HomePage />);
-  fireEvent.click(screen.getByRole('tab', { name: 'Workbench' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Browse and review' }));
 }
 
 describe('reviewer workspace', () => {
@@ -50,17 +51,17 @@ describe('reviewer workspace', () => {
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Where your evidence lives' })).toBeInTheDocument();
     expect(screen.getByText(/Imports are manual, and availability can change/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Workbench' }));
-    expect(screen.getByRole('tab', { name: 'Workbench' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse and review' }));
+    expect(screen.getByRole('tab', { name: 'Browse and review' })).toHaveFocus();
     expect(screen.queryByRole('heading', { name: 'How it works' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
     fireEvent.click(screen.getByRole('button', { name: 'View reviewer table' }));
     expect(await screen.findByText('Original evidence')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Table' })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Table' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Reviewer table' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Reviewer table' }), { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Home' }), { key: 'End' });
-    expect(screen.getByRole('tab', { name: 'Table' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Reviewer table' })).toHaveFocus();
   });
 
   it('preserves the selected grant and unsaved drafts when returning Home and back', async () => {
@@ -70,9 +71,13 @@ describe('reviewer workspace', () => {
     await screen.findByRole('heading', { name: 'Community grant' });
     fireEvent.change(screen.getByLabelText('Evidence and next steps'), { target: { value: 'Unsaved review evidence' } });
     fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Unsaved question' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Home' }));
+    const breadcrumb = screen.getByRole('link', { name: 'Queensland grants' });
+    expect(breadcrumb).toHaveAttribute('href', '#home-view');
+    expect(breadcrumb).not.toHaveAttribute('target');
+    fireEvent.click(breadcrumb);
+    expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
     expect(screen.getByRole('heading', { name: 'How it works' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Workbench' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browse and review' }));
     expect(screen.getByRole('heading', { name: 'Community grant' })).toBeInTheDocument();
     expect(screen.getByLabelText('Evidence and next steps')).toHaveValue('Unsaved review evidence');
     expect(screen.getByLabelText('Your question')).toHaveValue('Unsaved question');
@@ -93,10 +98,21 @@ describe('reviewer workspace', () => {
     expect(focus).toHaveAccessibleDescription('Searching your matching Queensland grants, not just the selected grant.');
   });
 
+  it('saves the selected grant decision and notes from the persistent review form', async () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Open now only' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Community grant/ }));
+    fireEvent.change(screen.getByLabelText('Review decision'), { target: { value: 'shortlisted' } });
+    fireEvent.change(screen.getByLabelText('Evidence and next steps'), { target: { value: 'Confirm current guidelines' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save review' }));
+    expect(await screen.findByText('Review saved against this grant version.')).toHaveAttribute('role', 'status');
+    expect(mocks.saveReview).toHaveBeenCalledWith(grant, 'shortlisted', 'Confirm current guidelines');
+  });
+
   it('shows closed grants, complete old evidence, and version-linked reviews in tables', async () => {
     render(<HomePage />);
     await waitFor(() => expect(mocks.getGrants).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('tab', { name: 'Table' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviewer table' }));
     expect(await screen.findByText('Original evidence')).toBeInTheDocument();
     expect(screen.getByText('Current evidence')).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getAllByText('Closed')).toHaveLength(2);
@@ -107,25 +123,25 @@ describe('reviewer workspace', () => {
     expect(screen.getByText('Check the old guidelines')).toBeInTheDocument();
     expect(screen.getByText('Old version — recheck evidence')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Community grant' }));
-    expect(screen.getByRole('tab', { name: 'Workbench' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Browse and review' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: 'Community grant' })).toBeInTheDocument();
   });
 
   it('searches full evidence and supports keyboard tab navigation', async () => {
     renderWorkbench();
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Workbench' }), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Browse and review' }), { key: 'ArrowRight' });
     expect(await screen.findByText('Original evidence')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Search all fields'), { target: { value: 'Original evidence' } });
     expect(screen.queryByText('Current evidence')).not.toBeInTheDocument();
     expect(screen.getByText('Original evidence')).toBeInTheDocument();
-    fireEvent.keyDown(screen.getByRole('tab', { name: 'Table' }), { key: 'Home' });
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Reviewer table' }), { key: 'Home' });
     expect(screen.getByRole('tab', { name: 'Home' })).toHaveFocus();
   });
 
   it('reports missing history instead of displaying a success-shaped empty result', async () => {
     mocks.getGrantVersions.mockRejectedValue(new Error('Version storage unavailable'));
     render(<HomePage />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Table' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviewer table' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Version storage unavailable');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Lucid Labs, Microsoft and GitHub' })).toHaveAttribute('src', '/brands/ll-ms-gh-white.svg');
@@ -135,7 +151,7 @@ describe('reviewer workspace', () => {
     const evidence = `${'Guidelines and evidence. '.repeat(20)}Unique co-funding requirement.`;
     mocks.getGrantVersions.mockResolvedValue([{ ...version, eligibility: evidence }]);
     render(<HomePage />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Table' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviewer table' }));
     const fullText = await screen.findByText(evidence);
     const details = fullText.closest('details')!;
     expect(details).not.toHaveAttribute('open');
@@ -152,7 +168,7 @@ describe('reviewer workspace', () => {
       { ...grant, id: 'zeta', title: 'Zeta', amount: '500', source: 'business', status: 'Open' },
     ]);
     render(<HomePage />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Table' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Reviewer table' }));
     await screen.findByText('Original evidence');
     expect(screen.getAllByRole('columnheader').slice(0, 5).map((cell) => cell.textContent)).toEqual(['Grant', 'Status', 'Amount (AUD)', 'Closes', 'Opens']);
     fireEvent.click(screen.getByLabelText('Include old versions'));
@@ -188,5 +204,28 @@ describe('reviewer workspace', () => {
     fireEvent.click(copy);
     expect(await screen.findByRole('alert')).toHaveTextContent('Clipboard permission denied.');
     expect(screen.queryByText('Answer copied to clipboard.')).not.toBeInTheDocument();
+  });
+
+  it('dismisses the copy confirmation after five seconds and resets its timer on another copy', async () => {
+    mocks.getChat.mockResolvedValue([{
+      id: 'chat-1', user_id: 'owner', question: 'What should I check?', answer: 'Read the current guidelines.',
+      sourcesJson: '[]', createdAt: new Date('2026-11-01T03:00:00Z'),
+    }]);
+    renderWorkbench();
+    const copy = await screen.findByRole('button', { name: 'Copy answer' });
+    vi.useFakeTimers();
+    try {
+      await act(async () => { fireEvent.click(copy); });
+      expect(screen.getByRole('status')).toHaveTextContent('Answer copied to clipboard.');
+      act(() => { vi.advanceTimersByTime(4000); });
+      await act(async () => { fireEvent.click(copy); });
+      act(() => { vi.advanceTimersByTime(4000); });
+      expect(screen.getByRole('status')).toHaveTextContent('Answer copied to clipboard.');
+      act(() => { vi.advanceTimersByTime(1000); });
+      expect(screen.queryByText('Answer copied to clipboard.')).not.toBeInTheDocument();
+      expect(screen.getByText('Read the current guidelines.')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

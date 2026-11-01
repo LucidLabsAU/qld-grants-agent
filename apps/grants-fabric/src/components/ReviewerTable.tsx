@@ -104,7 +104,7 @@ export function ReviewerTable({ grants, onSelect, refreshKey }: {
       <label>Sort direction<select className="form-select" value={descending ? 'desc' : 'asc'} onChange={(event) => setDescending(event.target.value === 'desc')}>
         <option value="asc">Ascending</option><option value="desc">Descending</option>
       </select></label>
-      {mode === 'records' && <label className="check"><input type="checkbox" checked={includeHistory} onChange={(event) => setIncludeHistory(event.target.checked)} />Include old versions</label>}
+      {mode === 'records' && <div className="form-check check"><input className="form-check-input" id="include-old-versions" type="checkbox" checked={includeHistory} onChange={(event) => setIncludeHistory(event.target.checked)} /><label className="form-check-label" htmlFor="include-old-versions">Include old versions</label></div>}
     </div>
     <p className="muted">All statuses, including closed grants. Old snapshots are preserved before imports change a record; versions overwritten before this feature are unavailable. Archive time is not the source publication date.</p>
     {loading && <p role="status">Loading version and review history…</p>}

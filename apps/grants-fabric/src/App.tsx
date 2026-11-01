@@ -7,7 +7,7 @@ import {
 } from 'react-router-dom';
 
 import { AuthPage } from '@/components/AuthPage';
-import { useAuth } from '@/hooks/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
 import { HomePage } from '@/pages/HomePage';
 
 /** The route a visitor asked for before being sent to sign in. */
