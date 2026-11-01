@@ -30,6 +30,7 @@
     "@microsoft/rayfin-client": "^1.36.2",
     "@microsoft/rayfin-core": "^1.36.2",
     "@microsoft/rayfin-local-dev": "^1.36.2",
+    "@qld-gov-au/qgds-bootstrap5": "2.4.5",
     "@tailwindcss/vite": "^4.1.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

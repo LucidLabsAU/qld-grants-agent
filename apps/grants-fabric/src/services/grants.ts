@@ -1,10 +1,16 @@
 import type { GrantRecord } from '../../rayfin/data/GrantRecord';
 import type { GrantReview } from '../../rayfin/data/GrantReview';
 import type { ChatTurn } from '../../rayfin/data/ChatTurn';
+import type { GrantVersion } from '../../rayfin/data/GrantVersion';
 import { getRayfinClient } from './rayfinClient';
 
 export type GrantInput = Omit<GrantRecord, 'id' | 'user_id' | 'active'>;
-export type { GrantRecord, GrantReview, ChatTurn };
+export type { GrantRecord, GrantReview, ChatTurn, GrantVersion };
+
+const grantFields = [
+  'user_id', 'sourceId', 'source', 'title', 'summary', 'eligibility', 'howToApply',
+  'url', 'status', 'openingDate', 'closingDate', 'amount', 'jurisdictions', 'categories', 'contentHash', 'active',
+] as const satisfies readonly (keyof GrantRecord)[];
 
 function text(record: Record<string, unknown>, key: string, max: number, required = false): string {
   const value = record[key];
@@ -66,10 +72,7 @@ export async function getGrants(): Promise<GrantRecord[]> {
   const rows: GrantRecord[] = [];
   let cursor: string | undefined;
   do {
-    const query = getRayfinClient().data.GrantRecord.select([
-      'id', 'user_id', 'sourceId', 'source', 'title', 'summary', 'eligibility', 'howToApply',
-      'url', 'status', 'openingDate', 'closingDate', 'amount', 'jurisdictions', 'categories', 'contentHash', 'active',
-    ]).orderBy({ id: 'asc' }).first(200);
+    const query = getRayfinClient().data.GrantRecord.select(['id', ...grantFields]).orderBy({ id: 'asc' }).first(200);
     const page = await (cursor ? query.after(cursor) : query).executePaginated();
     rows.push(...page.items);
     if (page.hasNextPage && !page.endCursor) throw new Error('Grant pagination did not return a continuation cursor.');
@@ -90,6 +93,14 @@ export async function importGrants(input: unknown): Promise<number> {
       const previous = existing.get(record.sourceId);
       if (previous) {
         if (previous.contentHash !== record.contentHash || !previous.active) {
+          // Preserve evidence before overwriting; a failed archive must block the update.
+          const archived = await client.data.GrantVersion.select(['id'])
+            .where({ grantId: { eq: previous.id }, contentHash: { eq: previous.contentHash }, active: { eq: previous.active } })
+            .first(1).execute();
+          if (!archived.length) {
+            const { id: grantId, ...snapshot } = previous;
+            await client.data.GrantVersion.create({ ...snapshot, grantId, archivedAt: new Date() });
+          }
           await client.data.GrantRecord.update({ id: previous.id }, { ...record, active: true });
         }
       } else {
@@ -103,12 +114,27 @@ export async function importGrants(input: unknown): Promise<number> {
   return completed;
 }
 
-export async function getReviews(grantId: string): Promise<GrantReview[]> {
+export async function getGrantVersions(): Promise<GrantVersion[]> {
+  const rows: GrantVersion[] = [];
+  let cursor: string | undefined;
+  do {
+    const query = getRayfinClient().data.GrantVersion.select(['id', 'grantId', 'archivedAt', ...grantFields])
+      .orderBy({ archivedAt: 'desc', id: 'asc' }).first(200);
+    const page = await (cursor ? query.after(cursor) : query).executePaginated();
+    rows.push(...page.items);
+    if (page.hasNextPage && !page.endCursor) throw new Error('Version pagination did not return a continuation cursor.');
+    cursor = page.hasNextPage ? page.endCursor : undefined;
+  } while (cursor);
+  return rows;
+}
+
+export async function getReviews(grantId?: string): Promise<GrantReview[]> {
   const rows: GrantReview[] = [];
   let cursor: string | undefined;
   do {
-    const query = getRayfinClient().data.GrantReview.select(['id', 'user_id', 'grantId', 'contentHash', 'decision', 'notes', 'createdAt'])
-      .where({ grantId: { eq: grantId } }).orderBy({ createdAt: 'desc', id: 'asc' }).first(100);
+    const base = getRayfinClient().data.GrantReview.select(['id', 'user_id', 'grantId', 'contentHash', 'decision', 'notes', 'createdAt']);
+    const query = (grantId ? base.where({ grantId: { eq: grantId } }) : base)
+      .orderBy({ createdAt: 'desc', id: 'asc' }).first(100);
     const page = await (cursor ? query.after(cursor) : query).executePaginated();
     rows.push(...page.items);
     if (page.hasNextPage && !page.endCursor) throw new Error('Review pagination did not return a continuation cursor.');
@@ -129,8 +155,17 @@ export async function saveReview(grant: GrantRecord, decision: GrantReview['deci
 }
 
 export async function getChat(): Promise<ChatTurn[]> {
-  return getRayfinClient().data.ChatTurn.select(['id', 'user_id', 'question', 'answer', 'sourcesJson', 'createdAt'])
-    .orderBy({ createdAt: 'desc', id: 'asc' }).first(20).execute();
+  const rows: ChatTurn[] = [];
+  let cursor: string | undefined;
+  do {
+    const query = getRayfinClient().data.ChatTurn.select(['id', 'user_id', 'question', 'answer', 'sourcesJson', 'createdAt'])
+      .orderBy({ createdAt: 'desc', id: 'asc' }).first(200);
+    const page = await (cursor ? query.after(cursor) : query).executePaginated();
+    rows.push(...page.items);
+    if (page.hasNextPage && !page.endCursor) throw new Error('Chat pagination did not return a continuation cursor.');
+    cursor = page.hasNextPage ? page.endCursor : undefined;
+  } while (cursor);
+  return rows;
 }
 
 export async function askGrants(question: string, selectedId: string, openOnly: boolean): Promise<void> {

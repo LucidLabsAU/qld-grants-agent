@@ -4,6 +4,7 @@ import App from '@/App';
 import { AuthProvider } from '@/hooks/AuthContext';
 import { bootstrapAuth } from '@/services/bootstrap';
 
+import '@qld-gov-au/qgds-bootstrap5/qld.bootstrap.css';
 import './main.css';
 
 const root = createRoot(document.getElementById('root')!);

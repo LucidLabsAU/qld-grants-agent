@@ -5,6 +5,8 @@ import {
   type ChatTurn, type GrantRecord, type GrantReview,
 } from '@/services/grants';
 import { isOpenNow, type ChatSource } from '../../rayfin/functions/src/grounding';
+import { BuiltBy } from '@/components/BuiltBy';
+import { ReviewerTable } from '@/components/ReviewerTable';
 
 export function HomePage() {
   const { signOut, user } = useAuth();
@@ -22,6 +24,8 @@ export function HomePage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'workbench' | 'table'>('workbench');
+  const [refreshKey, setRefreshKey] = useState(0);
   const selected = grants.find((grant) => grant.id === selectedId);
   const visible = grants.filter((grant) => grant.active && grant.jurisdictions.split('|').includes('Queensland')
     && (!openOnly || isOpenNow(grant))
@@ -61,10 +65,10 @@ export function HomePage() {
   return (
     <div className="workbench">
       <header className="app-header">
-        <div><span className="eyebrow">FABRIC / RAYFIN</span><h1>Grants Workbench</h1></div>
+        <div><span className="eyebrow">QUEENSLAND GRANTS / FABRIC</span><h1>Grants Workbench</h1></div>
         <div className="header-actions"><span>{user?.email}</span><button onClick={() => void run('Signing out', signOut)}>Sign out</button></div>
       </header>
-      <main>
+      <main className="workspace" id="workspace">
         <div className="intro"><div><h2>Find funding. Keep the evidence.</h2><p>Your Queensland catalogue, review trail, and grounded research assistant in one workspace.</p></div>
           <label className="import-button">Import normalized grants
             <input type="file" accept=".json,application/json" disabled={!!busy} onChange={(event) => {
@@ -74,6 +78,7 @@ export function HomePage() {
                 if (file.size > 25_000_000) throw new Error('Import files must be under 25 MB.');
                 const count = await importGrants(JSON.parse(await file.text()));
                 setGrants(await getGrants());
+                setRefreshKey((key) => key + 1);
                 setNotice(`${count} grants imported into your private Fabric catalogue.`);
               });
             }} />
@@ -83,10 +88,21 @@ export function HomePage() {
         {notice && <div role="status" className="notice">{notice}</div>}
         {busy && <p role="status">{busy}…</p>}
         <div className="metrics"><div><strong>{grants.filter((grant) => grant.active).length}</strong><span>Stored grants</span></div>
-          <div><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong><span>Open now</span></div>
-          <div><strong>Private</strong><span>Row-level user isolation</span></div>
-          <div><strong>Versioned</strong><span>Append-only review history</span></div></div>
-        <div className="columns">
+          <div><strong>{grants.filter((grant) => grant.active && isOpenNow(grant)).length}</strong><span>Open now</span></div></div>
+        <div className="workspace-tabs" role="tablist" aria-label="Workspace view">
+          <button id="workbench-tab" role="tab" aria-selected={tab === 'workbench'} aria-controls="workbench-view" tabIndex={tab === 'workbench' ? 0 : -1}
+            onClick={() => setTab('workbench')} onKeyDown={(event) => {
+              if (['ArrowRight', 'ArrowLeft', 'End'].includes(event.key)) { event.preventDefault(); setTab('table'); document.getElementById('table-tab')?.focus(); }
+            }}>Workbench</button>
+          <button id="table-tab" role="tab" aria-selected={tab === 'table'} aria-controls="table-view" tabIndex={tab === 'table' ? 0 : -1}
+            onClick={() => setTab('table')} onKeyDown={(event) => {
+              if (['ArrowRight', 'ArrowLeft', 'Home'].includes(event.key)) { event.preventDefault(); setTab('workbench'); document.getElementById('workbench-tab')?.focus(); }
+            }}>Table</button>
+        </div>
+        <div id="table-view" role="tabpanel" aria-labelledby="table-tab" hidden={tab !== 'table'} className="table-view">
+          {tab === 'table' && <ReviewerTable grants={grants} refreshKey={refreshKey} onSelect={(id) => { setSelectedId(id); setTab('workbench'); document.getElementById('workbench-tab')?.focus(); }} />}
+        </div>
+        <div id="workbench-view" role="tabpanel" aria-labelledby="workbench-tab" hidden={tab !== 'workbench'} className="columns">
           <section className="panel catalogue">
             <div className="panel-heading"><h2>Grant catalogue</h2><span>{visible.length} matching</span></div>
             <label>Search grants<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Innovation, community, export…" /></label>
@@ -102,6 +118,7 @@ export function HomePage() {
           </section>
           <section className="panel review">
             <div className="panel-heading"><h2>Grant review</h2><span>Human decisions</span></div>
+            <div className="review-content" tabIndex={0} role="region" aria-label="Grant evidence and review history">
             {!selected ? <p className="empty">Select a grant to read its evidence and record a review.</p> : <>
               <h3>{selected.title}</h3>
               {selected.url && <a href={selected.url} target="_blank" rel="noreferrer">Official source ↗</a>}
@@ -113,10 +130,11 @@ export function HomePage() {
                 void run('Saving review', async () => {
                   await saveReview(selected, decision, notes);
                   setReviews(await getReviews(selected.id));
+                  setRefreshKey((key) => key + 1);
                   setNotice('Review saved against this grant version.');
                 });
               }}>
-                <label>Review decision<select value={decision} onChange={(event) => setDecision(event.target.value as GrantReview['decision'])}>
+                <label>Review decision<select className="form-select" value={decision} onChange={(event) => setDecision(event.target.value as GrantReview['decision'])}>
                   <option value="researching">Researching</option><option value="shortlisted">Shortlisted</option><option value="ready">Ready to apply</option><option value="dismissed">Dismissed</option>
                 </select></label>
                 <label>Evidence and next steps<textarea value={notes} maxLength={4000} rows={4} onChange={(event) => setNotes(event.target.value)} placeholder="Record questions, evidence gaps, and next steps." /></label>
@@ -130,14 +148,24 @@ export function HomePage() {
                 <p className="prose">{review.notes}</p>
               </article>)}
             </>}
+            </div>
           </section>
           <section className="panel chat">
             <div className="panel-heading"><h2>Research assistant</h2><span>Fabric-hosted function</span></div>
             <p className="muted">Retrieves your stored Queensland grants before answering. Keyword retrieval, not an exhaustive search. No eligibility verdicts.</p>
-            <label className="check"><input type="checkbox" checked={scoped} onChange={(event) => setScoped(event.target.checked)} />Focus on selected grant</label>
+            <label className="check"><input type="checkbox" checked={scoped && !!selected} disabled={!selected} aria-describedby="chat-scope-info" onChange={(event) => setScoped(event.target.checked)} />Focus on selected grant</label>
+            <p id="chat-scope-info" className="muted scope-info">{!selected
+              ? 'No grant selected. Choose one in the catalogue to focus your questions. Until then, the assistant searches your matching Queensland grants.'
+              : scoped ? `Focused on: ${selected.title}` : 'Searching your matching Queensland grants, not just the selected grant.'}</p>
             <div className="chat-history" aria-live="polite">
-              {!chat.length && <p className="empty">Ask about funding, dates, or the evidence you need to check. The last 20 saved questions appear here; each answer retrieves fresh evidence.</p>}
-              {[...chat].reverse().map((turn) => <article className="chat-turn" key={turn.id}>
+              {!chat.length && <p className="empty">Ask about funding, dates, or the evidence you need to check. Your full conversation history is saved in Fabric SQL; each answer retrieves fresh evidence.</p>}
+              {chat.map((turn) => <article className="chat-turn" key={turn.id}>
+                <div className="chat-turn-tools"><time dateTime={new Date(turn.createdAt).toISOString()} className="muted">{new Date(turn.createdAt).toLocaleString('en-AU')}</time>
+                  <button disabled={!!busy} onClick={() => void run('Copying answer', async () => {
+                    if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable. Open the app in a secure browser context to copy answers.');
+                    await navigator.clipboard.writeText(turn.answer);
+                    setNotice('Answer copied to clipboard.');
+                  })}>Copy answer</button></div>
                 <h3>{turn.question}</h3><p className="prose">{turn.answer}</p>
                 <Sources json={turn.sourcesJson} />
               </article>)}
@@ -150,13 +178,13 @@ export function HomePage() {
                 setQuestion('');
               });
             }}>
-              <label>Your question<textarea value={question} rows={3} maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="What should I check before applying?" /></label>
+              <label>Your question<textarea value={question} rows={2} maxLength={2000} onChange={(event) => setQuestion(event.target.value)} placeholder="What should I check before applying?" /></label>
               <button className="primary" disabled={!!busy || !question.trim()}>Ask with evidence</button>
             </form>
           </section>
         </div>
       </main>
-      <footer>Prototype · Fabric-managed data, hosting and functions · Always confirm current details with the issuing agency.</footer>
+      <footer className="app-footer"><span>Independent prototype · Not an official government service. Confirm details with the issuing agency.</span><BuiltBy /></footer>
     </div>
   );
 }

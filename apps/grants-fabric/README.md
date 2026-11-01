@@ -8,7 +8,19 @@ A high-code Rayfin prototype for a private Queensland grants catalogue, human gr
 
 Sign in and import normalized grant JSON, such as the root `npm run preview -- --out grants.preview.json` output. Imports update matching source IDs and add new grants to your own catalogue; they do not deactivate programs missing from an import. The deployed prototype was seeded with 320 Queensland-applicable business.gov.au programs.
 
-`GrantRecord`, `GrantReview`, and `ChatTurn` in `rayfin/data/` enforce caller ownership. Reviews are append-only and tied to the program's content hash, so changing a grant does not silently rewrite a previous decision. Chat turns preserve the answer and cited source IDs, URLs, and revision hashes. Anonymous access and assigning another user's ownership are denied.
+`GrantRecord`, `GrantVersion`, `GrantReview`, and `ChatTurn` in `rayfin/data/` enforce caller ownership. Imports archive the complete previous grant record before changing it; an archive failure blocks the overwrite. Snapshots and reviews are append-only and tied to the program's content hash, so changing a grant does not silently rewrite previous evidence or decisions. Previously overwritten content cannot be recovered; archive timestamps record when the app preserved evidence, not when the provider published it. Chat turns preserve the answer and cited source IDs, URLs, and revision hashes. Anonymous access and assigning another user's ownership are denied.
+
+## Workbench design
+
+The app uses the official [Queensland Government Design System (QGDS)](https://github.com/qld-gov-au/qgds-bootstrap5), via the ISC-licensed `@qld-gov-au/qgds-bootstrap5` stylesheet and its colour/typography tokens. It does not display the Queensland Government crest or imply government endorsement. The bottom-right **Built by** footer uses the supplied Lucid Labs / Microsoft / GitHub white logo lockup, hosted locally.
+
+On desktop, the header, compact summary, tabs and footer fit within the dynamic viewport; catalogue, evidence and chat history scroll independently, with the question composer kept visible. Narrow screens and short/zoomed viewports return to a stacked, scrolling layout rather than clipping controls.
+
+The assistant's focus control is disabled and unchecked until a grant is selected, with a visible explanation that questions currently search matching Queensland grants. After selection, it identifies the grant being used as evidence; unchecking focus returns to catalogue-wide retrieval.
+
+The **Table** tab leads with grant title, status, funding amount and dates, then categories and evidence; IDs, hashes and storage metadata are last. It includes all statuses and optional old snapshots, with sticky headings and grant names inside a scrollable table. Search covers full text, including collapsed evidence; source/status/decision filters and ascending/descending sort controls help reviewers narrow the records. Unknown amounts/dates sort last and zero funding remains distinct from missing data. Long evidence cells expand on demand to keep rows compact. Switch the table selector to **Review history** for decisions, notes, timestamps and version hashes; selecting a title opens the current grant for review.
+
+Every successful question/answer pair is stored as an append-only row in the Fabric SQL `ChatTurn` table, with caller ownership, citations and a timestamp. The assistant reads all saved pages (not just the latest 20), displays newest answers first, and provides a timestamp and **Copy answer** control for each response. Clipboard/storage failures are reported explicitly. This is persisted conversation history, not model conversational memory: each question still retrieves fresh evidence independently.
 
 ## Copilot SDK chat
 
